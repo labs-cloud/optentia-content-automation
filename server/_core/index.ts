@@ -8,6 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { generateContentHandler, publishPostsHandler } from "../cronHandlers";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -36,6 +37,10 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  // Cron / Heartbeat handlers — must be registered before Vite fallthrough
+  app.post("/api/scheduled/generate-content", generateContentHandler);
+  app.post("/api/scheduled/publish-posts", publishPostsHandler);
+
   // tRPC API
   app.use(
     "/api/trpc",

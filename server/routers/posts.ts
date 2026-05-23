@@ -1,0 +1,287 @@
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import { invokeLLM } from "../_core/llm";
+import { notifyOwner } from "../_core/notification";
+import {
+  createContentPost,
+  deleteContentPost,
+  getContentPostById,
+  getContentPosts,
+  getPendingApprovalPosts,
+  recordAnalyticsEvent,
+  updateContentPost,
+} from "../db";
+import { protectedProcedure, router } from "../_core/trpc";
+
+const PLATFORM_PROMPTS: Record<string, string> = {
+  instagram: `You are an expert Instagram content creator for Optentia, an AI systems and automation operator for businesses.
+Generate a high-performing Instagram post. Include:
+- A strong hook in the first line (under 125 chars before "more")
+- Engaging caption (150-300 words) with bold opinions or practical insights
+- 15-20 relevant hashtags
+- A clear CTA (e.g., "DM me 'SYSTEM'")
+Format: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  linkedin: `You are an expert LinkedIn thought leader for Optentia, an AI systems and automation operator for businesses.
+Generate a professional LinkedIn post. Include:
+- A compelling opening line that stops the scroll
+- Authority-building body (200-400 words) with business systems insight
+- Professional CTA
+- 3-5 relevant hashtags
+Format: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  facebook: `You are an expert Facebook content creator for Optentia, an AI systems and automation operator for businesses.
+Generate a discussion-driving Facebook post. Include:
+- Strong opinion or commentary opener
+- Engaging body (100-250 words) that invites discussion
+- Question to drive comments
+- 3-5 hashtags
+Format: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  youtube: `You are an expert YouTube content strategist for Optentia, an AI systems and automation operator for businesses.
+Generate a YouTube video script outline. Include:
+- Compelling video title
+- Hook (first 30 seconds script)
+- Video description (150-300 words) optimized for search
+- Tags (10-15 relevant tags)
+Format: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
+};
+
+const CONTENT_PILLAR_CONTEXT: Record<string, string> = {
+  strong_opinion: "Focus on a bold take about business inefficiency, AI misuse, or systems thinking. Be direct and opinionated.",
+  practical_education: "Provide actionable, step-by-step automation or AI workflow education. Include a specific example.",
+  documentary: "Share a behind-the-scenes look at daily workflows, desk setups, or business building process.",
+  direct_promotion: "Highlight a case study, DM offer, consultation call, or product launch. Use before/after framing.",
+};
+
+export const postsRouter = router({
+  list: protectedProcedure
+    .input(z.object({
+      status: z.string().optional(),
+      platform: z.string().optional(),
+      limit: z.number().default(50),
+      offset: z.number().default(0),
+    }))
+    .query(async ({ input }) => {
+      return getContentPosts(input);
+    }),
+
+  pendingApproval: protectedProcedure.query(async () => {
+    return getPendingApprovalPosts();
+  }),
+
+  get: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      return post;
+    }),
+
+  create: protectedProcedure
+    .input(z.object({
+      title: z.string().optional(),
+      caption: z.string(),
+      hashtags: z.string().optional(),
+      platform: z.enum(["instagram", "linkedin", "facebook", "youtube"]),
+      contentType: z.enum(["text", "image", "video", "reel", "story", "carousel"]).default("text"),
+      contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).optional(),
+      scheduledAt: z.string().optional(),
+      scriptText: z.string().optional(),
+      mediaUrl: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const post = await createContentPost({
+        ...input,
+        scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+        status: "draft",
+        aiGenerated: false,
+      });
+      return post;
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      title: z.string().optional(),
+      caption: z.string().optional(),
+      hashtags: z.string().optional(),
+      status: z.enum(["draft", "pending_approval", "approved", "scheduled", "published", "rejected", "failed"]).optional(),
+      scheduledAt: z.string().optional(),
+      scriptText: z.string().optional(),
+      mediaUrl: z.string().optional(),
+      contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).optional(),
+      contentType: z.enum(["text", "image", "video", "reel", "story", "carousel"]).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { id, scheduledAt, ...rest } = input;
+      const post = await updateContentPost(id, {
+        ...rest,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
+      });
+      return post;
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      await deleteContentPost(input.id);
+      return { success: true };
+    }),
+
+  approve: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      scheduledAt: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      const updated = await updateContentPost(input.id, {
+        status: input.scheduledAt ? "scheduled" : "approved",
+        scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+      });
+      await recordAnalyticsEvent({
+        postId: input.id,
+        platform: post.platform,
+        eventType: "approved",
+      });
+      return updated;
+    }),
+
+  reject: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      const updated = await updateContentPost(input.id, {
+        status: "rejected",
+        rejectionReason: input.reason,
+      });
+      await recordAnalyticsEvent({
+        postId: input.id,
+        platform: post.platform,
+        eventType: "rejected",
+      });
+      return updated;
+    }),
+
+  submitForApproval: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      const updated = await updateContentPost(input.id, { status: "pending_approval" });
+      // Notify owner
+      await notifyOwner({
+        title: "Content Pending Approval",
+        content: `A new ${post.platform} post is waiting for your review: "${post.title || post.caption?.substring(0, 60)}..."`,
+      });
+      return updated;
+    }),
+
+  generateAI: protectedProcedure
+    .input(z.object({
+      platform: z.enum(["instagram", "linkedin", "facebook", "youtube"]),
+      contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).default("strong_opinion"),
+      topic: z.string().optional(),
+      tone: z.string().optional(),
+      autoSubmitForApproval: z.boolean().default(true),
+    }))
+    .mutation(async ({ input }) => {
+      const systemPrompt = PLATFORM_PROMPTS[input.platform];
+      const pillarContext = CONTENT_PILLAR_CONTEXT[input.contentPillar];
+
+      const userMessage = [
+        pillarContext,
+        input.topic ? `Topic/angle: ${input.topic}` : "Choose a compelling topic relevant to AI systems, business automation, or operational efficiency.",
+        input.tone ? `Tone: ${input.tone}` : "Tone: Strategic, calm, intelligent, direct.",
+        "Brand: Optentia — AI systems and automation operator for businesses. Not just an AI tool provider.",
+        "Return only valid JSON, no markdown fences.",
+      ].join("\n");
+
+      const response = await invokeLLM({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "social_post",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                caption: { type: "string" },
+                hashtags: { type: "string" },
+                hook: { type: "string" },
+                scriptText: { type: "string" },
+              },
+              required: ["caption", "hashtags", "hook"],
+              additionalProperties: false,
+            },
+          },
+        },
+      });
+
+      const rawContent = response.choices[0]?.message?.content;
+      const content = typeof rawContent === "string" ? rawContent : null;
+      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
+
+      let parsed: { caption: string; hashtags: string; hook: string; scriptText?: string };
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" });
+      }
+
+      const post = await createContentPost({
+        title: parsed.hook?.substring(0, 100),
+        caption: parsed.caption,
+        hashtags: parsed.hashtags,
+        scriptText: parsed.scriptText,
+        platform: input.platform,
+        contentPillar: input.contentPillar,
+        status: input.autoSubmitForApproval ? "pending_approval" : "draft",
+        aiGenerated: true,
+        generationPrompt: userMessage,
+        contentType: input.platform === "youtube" ? "video" : "text",
+      });
+
+      if (input.autoSubmitForApproval) {
+        await notifyOwner({
+          title: "New AI Content Pending Approval",
+          content: `AI generated a new ${input.platform} post ready for your review: "${parsed.hook?.substring(0, 80)}..."`,
+        });
+      }
+
+      return post;
+    }),
+
+  schedulePost: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      scheduledAt: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      if (post.status !== "approved") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved posts can be scheduled" });
+      }
+      const updated = await updateContentPost(input.id, {
+        status: "scheduled",
+        scheduledAt: new Date(input.scheduledAt),
+      });
+      await recordAnalyticsEvent({
+        postId: input.id,
+        platform: post.platform,
+        eventType: "scheduled",
+      });
+      return updated;
+    }),
+});
