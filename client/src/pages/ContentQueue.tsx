@@ -15,10 +15,14 @@ import {
   Check,
   CheckSquare,
   Edit3,
-  Instagram,
+  ExternalLink,
+  ImageIcon,
+  Loader2,
+  Send,
   Sparkles,
   Trash2,
   X,
+  AlertCircle,
 } from "lucide-react";
 
 type Post = {
@@ -32,9 +36,13 @@ type Post = {
   contentPillar: string | null;
   aiGenerated: boolean;
   scheduledAt: Date | null;
+  publishedAt: Date | null;
   createdAt: Date;
   rejectionReason: string | null;
   scriptText: string | null;
+  imageUrl: string | null;
+  externalPostId: string | null;
+  publishError: string | null;
 };
 
 const STATUS_TABS = [
@@ -44,6 +52,7 @@ const STATUS_TABS = [
   { value: "draft", label: "Drafts" },
   { value: "published", label: "Published" },
   { value: "rejected", label: "Rejected" },
+  { value: "failed", label: "Failed" },
 ];
 
 export default function ContentQueue() {
@@ -56,6 +65,8 @@ export default function ContentQueue() {
   const [editCaption, setEditCaption] = useState("");
   const [editHashtags, setEditHashtags] = useState("");
   const [editTitle, setEditTitle] = useState("");
+  const [publishingId, setPublishingId] = useState<number | null>(null);
+  const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -66,7 +77,7 @@ export default function ContentQueue() {
 
   const approveMutation = trpc.posts.approve.useMutation({
     onSuccess: () => {
-      toast.success("Post approved successfully");
+      toast.success("Post approved — ready to schedule or publish");
       utils.posts.list.invalidate();
       utils.analytics.summary.invalidate();
     },
@@ -112,11 +123,29 @@ export default function ContentQueue() {
     onError: (e) => toast.error(e.message),
   });
 
+  const publishNowMutation = trpc.posts.publishNow.useMutation({
+    onSuccess: (data, variables) => {
+      toast.success("Post published successfully!");
+      setPublishingId(null);
+      utils.posts.list.invalidate();
+      utils.analytics.summary.invalidate();
+    },
+    onError: (e) => {
+      toast.error(`Publish failed: ${e.message}`);
+      setPublishingId(null);
+    },
+  });
+
   const openEdit = (post: Post) => {
     setEditPost(post);
     setEditCaption(post.caption ?? "");
     setEditHashtags(post.hashtags ?? "");
     setEditTitle(post.title ?? "");
+  };
+
+  const handlePublishNow = (post: Post) => {
+    setPublishingId(post.id);
+    publishNowMutation.mutate({ id: post.id });
   };
 
   return (
@@ -128,13 +157,13 @@ export default function ContentQueue() {
             <CheckSquare className="h-6 w-6 text-primary" />
             Content Queue
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Review, approve, and manage your content pipeline</p>
+          <p className="text-sm text-muted-foreground mt-1">Review, approve, and publish your content pipeline</p>
         </div>
       </div>
 
       {/* Status Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-muted/50 border border-border/50 h-9 p-1">
+        <TabsList className="bg-muted/50 border border-border/50 h-9 p-1 flex-wrap">
           {STATUS_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} className="text-xs h-7 px-3">
               {tab.label}
@@ -146,7 +175,7 @@ export default function ContentQueue() {
       {/* Post List */}
       {isLoading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
         </div>
       ) : (posts ?? []).length === 0 ? (
         <div className="py-16 text-center">
@@ -158,6 +187,7 @@ export default function ContentQueue() {
           {posts?.map((post) => {
             const cfg = PLATFORM_CONFIG[post.platform as keyof typeof PLATFORM_CONFIG];
             const statusCfg = STATUS_CONFIG[post.status as keyof typeof STATUS_CONFIG];
+            const isPublishing = publishingId === post.id;
             return (
               <Card key={post.id} className="bg-card border-border/50 hover:border-border transition-colors">
                 <CardContent className="p-5">
@@ -182,12 +212,31 @@ export default function ContentQueue() {
                             AI
                           </div>
                         )}
+                        {(post as any).imageUrl && (
+                          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-violet-500/10 text-violet-400">
+                            <ImageIcon className="h-3 w-3" />
+                            Image
+                          </div>
+                        )}
                         <span className="text-xs text-muted-foreground ml-auto">{formatRelativeTime(post.createdAt)}</span>
                       </div>
 
                       {post.title && (
                         <p className="text-sm font-semibold mb-1">{post.title}</p>
                       )}
+
+                      {/* Image Preview */}
+                      {(post as any).imageUrl && (
+                        <div className="mb-3 mt-2">
+                          <img
+                            src={(post as any).imageUrl}
+                            alt="Generated image"
+                            className="h-32 w-32 object-cover rounded-lg border border-border/50 cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => setExpandedImage((post as any).imageUrl)}
+                          />
+                        </div>
+                      )}
+
                       <p className="text-sm text-muted-foreground leading-relaxed">
                         {truncate(post.caption, 200)}
                       </p>
@@ -200,15 +249,30 @@ export default function ContentQueue() {
                           Scheduled: {new Date(post.scheduledAt).toLocaleString()}
                         </div>
                       )}
+                      {post.publishedAt && (
+                        <div className="flex items-center gap-1 mt-2 text-xs text-emerald-400">
+                          <Check className="h-3 w-3" />
+                          Published: {new Date(post.publishedAt).toLocaleString()}
+                          {(post as any).externalPostId && (
+                            <span className="text-muted-foreground ml-1">· ID: {(post as any).externalPostId}</span>
+                          )}
+                        </div>
+                      )}
                       {post.rejectionReason && (
                         <p className="text-xs text-red-400 mt-1.5 bg-red-500/10 px-2 py-1 rounded">
                           Rejected: {post.rejectionReason}
                         </p>
                       )}
+                      {(post as any).publishError && (
+                        <div className="flex items-start gap-1.5 mt-1.5 text-xs text-amber-400 bg-amber-500/10 px-2 py-1.5 rounded">
+                          <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                          <span>{(post as any).publishError}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Actions */}
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end max-w-[120px]">
                       {post.status === "pending_approval" && (
                         <>
                           <Button
@@ -217,6 +281,7 @@ export default function ContentQueue() {
                             className="h-8 w-8 p-0 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
                             onClick={() => approveMutation.mutate({ id: post.id })}
                             title="Approve"
+                            disabled={approveMutation.isPending}
                           >
                             <Check className="h-4 w-4" />
                           </Button>
@@ -244,6 +309,16 @@ export default function ContentQueue() {
                         <>
                           <Button
                             size="sm"
+                            className="h-8 text-xs gap-1 bg-primary/90 hover:bg-primary"
+                            onClick={() => handlePublishNow(post as Post)}
+                            disabled={isPublishing}
+                            title="Publish Now"
+                          >
+                            {isPublishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                            {isPublishing ? "Publishing..." : "Publish"}
+                          </Button>
+                          <Button
+                            size="sm"
                             variant="outline"
                             className="h-8 text-xs gap-1"
                             onClick={() => {
@@ -264,7 +339,35 @@ export default function ContentQueue() {
                           </Button>
                         </>
                       )}
-                      {(post.status === "draft" || post.status === "rejected") && (
+                      {post.status === "scheduled" && (
+                        <>
+                          <Button
+                            size="sm"
+                            className="h-8 text-xs gap-1 bg-primary/90 hover:bg-primary"
+                            onClick={() => handlePublishNow(post as Post)}
+                            disabled={isPublishing}
+                            title="Publish Now"
+                          >
+                            {isPublishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                            {isPublishing ? "Publishing..." : "Publish Now"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground"
+                            onClick={() => openEdit(post as Post)}
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                      {post.status === "published" && (post as any).externalPostId && (
+                        <div className="flex items-center gap-1 text-xs text-emerald-400">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span className="font-mono">{(post as any).externalPostId?.substring(0, 12)}...</span>
+                        </div>
+                      )}
+                      {(post.status === "draft" || post.status === "rejected" || post.status === "failed") && (
                         <>
                           <Button
                             size="sm"
@@ -293,6 +396,15 @@ export default function ContentQueue() {
         </div>
       )}
 
+      {/* Image Lightbox */}
+      <Dialog open={!!expandedImage} onOpenChange={(o) => !o && setExpandedImage(null)}>
+        <DialogContent className="max-w-2xl bg-card border-border/50 p-2">
+          {expandedImage && (
+            <img src={expandedImage} alt="Generated image" className="w-full rounded-lg" />
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Dialog */}
       <Dialog open={!!editPost} onOpenChange={(o) => !o && setEditPost(null)}>
         <DialogContent className="max-w-2xl bg-card border-border/50">
@@ -300,6 +412,12 @@ export default function ContentQueue() {
             <DialogTitle className="font-display">Edit Post</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {editPost?.imageUrl && (
+              <div>
+                <label className="text-xs text-muted-foreground mb-1.5 block">Generated Image</label>
+                <img src={editPost.imageUrl} alt="Generated" className="h-40 w-40 object-cover rounded-lg border border-border/50" />
+              </div>
+            )}
             <div>
               <label className="text-xs text-muted-foreground mb-1.5 block">Title / Hook</label>
               <Input
@@ -342,6 +460,7 @@ export default function ContentQueue() {
               }}
               disabled={updateMutation.isPending}
             >
+              {updateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Save Changes
             </Button>
           </DialogFooter>
@@ -391,6 +510,7 @@ export default function ContentQueue() {
               onChange={(e) => setScheduleDate(e.target.value)}
               className="bg-muted/30 border-border/50"
             />
+            <p className="text-xs text-muted-foreground mt-2">The post will be automatically published at this time by the scheduler.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSchedulePost(null)}>Cancel</Button>

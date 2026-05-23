@@ -58,6 +58,11 @@ vi.mock("./_core/llm", () => ({
   }),
 }));
 
+// ─── Mock image generation ──────────────────────────────────────────────────
+vi.mock("./_core/imageGeneration", () => ({
+  generateImage: vi.fn().mockResolvedValue({ url: "https://example.com/generated-image.png" }),
+}));
+
 // ─── Mock notifications ───────────────────────────────────────────────────────
 vi.mock("./_core/notification", () => ({
   notifyOwner: vi.fn().mockResolvedValue(true),

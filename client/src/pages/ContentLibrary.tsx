@@ -125,6 +125,21 @@ export default function ContentLibrary() {
             const statusCfg = STATUS_CONFIG[post.status as keyof typeof STATUS_CONFIG];
             return (
               <Card key={post.id} className="bg-card border-border/50 hover:border-border transition-colors group">
+                {/* Image banner if available */}
+                {(post as any).imageUrl && (
+                  <div className="relative h-40 overflow-hidden rounded-t-xl">
+                    <img
+                      src={(post as any).imageUrl}
+                      alt="Generated"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="absolute bottom-2 left-2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-black/50 text-white backdrop-blur-sm">
+                      <Sparkles className="h-3 w-3" />
+                      AI Image
+                    </div>
+                  </div>
+                )}
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3 mb-3">
                     <div className={`h-9 w-9 rounded-lg ${cfg?.bgColor} border ${cfg?.borderColor} flex items-center justify-center shrink-0`}>
@@ -159,6 +174,11 @@ export default function ContentLibrary() {
                   </p>
                   {post.hashtags && (
                     <p className="text-xs text-primary/60 mt-1.5 line-clamp-1">{post.hashtags}</p>
+                  )}
+                  {(post as any).externalPostId && (
+                    <div className="flex items-center gap-1 mt-1.5 text-xs text-emerald-400">
+                      <span className="font-mono">Published · ID: {(post as any).externalPostId?.substring(0, 16)}...</span>
+                    </div>
                   )}
                   <p className="text-xs text-muted-foreground/60 mt-2">{formatRelativeTime(post.createdAt)}</p>
                 </CardContent>

@@ -1,18 +1,21 @@
 import { Request, Response } from "express";
 import { invokeLLM } from "./_core/llm";
+import { generateImage } from "./_core/imageGeneration";
 import { notifyOwner } from "./_core/notification";
 import { sdk } from "./_core/sdk";
 import {
   createContentPost,
-  getContentScheduleById,
   getScheduleByCronTaskUid,
   getScheduledPostsDue,
+  getPlatformConnection,
   getPlatformConnections,
   recordAnalyticsEvent,
   updateContentPost,
   updateContentSchedule,
-  getPendingApprovalPosts,
 } from "./db";
+import { publishToInstagram, publishToFacebook } from "./publishers/meta";
+import { publishToLinkedIn } from "./publishers/linkedin";
+import { publishYouTubeCommunityPost } from "./publishers/youtube";
 
 const PLATFORM_PROMPTS: Record<string, string> = {
   instagram: `You are an expert Instagram content creator for Optentia, an AI systems and automation operator for businesses. Generate a high-performing Instagram post with a strong hook, engaging caption (150-300 words), 15-20 hashtags, and a clear CTA. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
@@ -88,6 +91,20 @@ export async function generateContentHandler(req: Request, res: Response) {
         if (!content) continue;
 
         const parsed = JSON.parse(content);
+
+        // Generate image for visual platforms
+        let imageUrl: string | undefined;
+        let imagePrompt: string | undefined;
+        if (platform === "instagram" || platform === "facebook") {
+          try {
+            imagePrompt = `Professional social media graphic for Optentia, a business automation company. Theme: "${parsed.hook?.substring(0, 80)}". Style: clean, modern, dark background with teal/cyan accent colors, minimalist design, bold typography, no people, no faces. High quality, 1:1 square format.`;
+            const imgResult = await generateImage({ prompt: imagePrompt });
+            if (imgResult?.url) imageUrl = imgResult.url;
+          } catch (imgErr) {
+            console.error(`[cron] Image generation failed for ${platform} (non-fatal):`, imgErr);
+          }
+        }
+
         const post = await createContentPost({
           title: parsed.hook?.substring(0, 100),
           caption: parsed.caption,
@@ -98,8 +115,10 @@ export async function generateContentHandler(req: Request, res: Response) {
           status: "pending_approval",
           aiGenerated: true,
           generationPrompt: userMessage,
+          imageUrl,
+          imagePrompt,
           scheduleId: schedule.id,
-          contentType: platform === "youtube" ? "video" : "text",
+          contentType: platform === "youtube" ? "video" : (imageUrl ? "image" : "text"),
         });
 
         if (post) generatedPosts.push(post.id);
@@ -115,7 +134,7 @@ export async function generateContentHandler(req: Request, res: Response) {
     if (generatedPosts.length > 0) {
       await notifyOwner({
         title: `${generatedPosts.length} New Post${generatedPosts.length > 1 ? "s" : ""} Pending Approval`,
-        content: `The "${schedule.name}" schedule just generated ${generatedPosts.length} new post${generatedPosts.length > 1 ? "s" : ""} across ${platforms.join(", ")}. Review and approve them in your content queue.`,
+        content: `The "${schedule.name}" schedule generated ${generatedPosts.length} new post${generatedPosts.length > 1 ? "s" : ""} across ${platforms.join(", ")}. Review and approve them in your content queue.`,
       });
     }
 
@@ -144,44 +163,61 @@ export async function publishPostsHandler(req: Request, res: Response) {
 
     for (const post of duePosts) {
       try {
-        // In production: call the actual platform API here
-        // For now: mark as published and record the event
-        await updateContentPost(post.id, {
-          status: "published",
-          publishedAt: new Date(),
-        });
+        const result = await publishPostToPlatform(post);
 
-        await recordAnalyticsEvent({
-          postId: post.id,
-          platform: post.platform,
-          eventType: "published",
-        });
+        if (result.success) {
+          await updateContentPost(post.id, {
+            status: "published",
+            publishedAt: new Date(),
+            externalPostId: result.externalPostId,
+            publishError: null,
+          });
 
-        published.push(post.id);
+          await recordAnalyticsEvent({
+            postId: post.id,
+            platform: post.platform,
+            eventType: "published",
+          });
 
-        // Notify owner per published post
-        await notifyOwner({
-          title: `Post Published: ${post.platform}`,
-          content: `Your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}..." has been published successfully.`,
-        });
+          published.push(post.id);
+
+          await notifyOwner({
+            title: `✓ Post Published: ${post.platform}`,
+            content: `Your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}..." has been published successfully.${result.externalPostId ? ` Post ID: ${result.externalPostId}` : ""}`,
+          });
+        } else {
+          await updateContentPost(post.id, {
+            status: "failed",
+            publishError: result.error,
+          });
+
+          await recordAnalyticsEvent({
+            postId: post.id,
+            platform: post.platform,
+            eventType: "failed",
+          });
+
+          failed.push(post.id);
+
+          await notifyOwner({
+            title: `✗ Publish Failed: ${post.platform}`,
+            content: `Failed to publish your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}...". Error: ${result.error}`,
+          });
+        }
       } catch (err) {
         console.error(`[cron] Failed to publish post ${post.id}:`, err);
-        await updateContentPost(post.id, { status: "failed" });
-        await recordAnalyticsEvent({
-          postId: post.id,
-          platform: post.platform,
-          eventType: "failed",
-        });
+        await updateContentPost(post.id, { status: "failed", publishError: String(err) });
+        await recordAnalyticsEvent({ postId: post.id, platform: post.platform, eventType: "failed" });
         failed.push(post.id);
       }
     }
 
-    // Check platform connection health
+    // Check platform connection health and notify on errors
     const connections = await getPlatformConnections();
     for (const conn of connections) {
       if (conn.status === "error") {
         await notifyOwner({
-          title: `Platform Connection Issue: ${conn.platform}`,
+          title: `⚠ Platform Connection Issue: ${conn.platform}`,
           content: `The ${conn.platform} connection is reporting an error: ${conn.errorMessage || "Unknown error"}. Please check your credentials in Platform Settings.`,
         });
       }
@@ -194,5 +230,83 @@ export async function publishPostsHandler(req: Request, res: Response) {
       error: String(err),
       timestamp: new Date().toISOString(),
     });
+  }
+}
+
+// ─── Platform Dispatcher ──────────────────────────────────────────────────────
+
+async function publishPostToPlatform(post: {
+  id: number;
+  platform: string;
+  caption: string | null;
+  hashtags: string | null;
+  title: string | null;
+  imageUrl: string | null;
+  scriptText: string | null;
+}): Promise<{ success: boolean; externalPostId?: string; error?: string }> {
+  const conn = await getPlatformConnection(post.platform);
+
+  if (!conn || !conn.accessToken) {
+    return {
+      success: false,
+      error: `No credentials configured for ${post.platform}. Please add your API credentials in Platform Settings.`,
+    };
+  }
+
+  const caption = post.caption ?? "";
+  const hashtags = post.hashtags ?? "";
+
+  switch (post.platform) {
+    case "instagram": {
+      if (!conn.accountId) {
+        return { success: false, error: "Instagram Business Account ID not configured." };
+      }
+      return publishToInstagram({
+        accessToken: conn.accessToken,
+        accountId: conn.accountId,
+        caption: `${caption}\n\n${hashtags}`.trim(),
+        imageUrl: post.imageUrl ?? undefined,
+      });
+    }
+
+    case "facebook": {
+      const pageId = conn.pageId ?? conn.accountId;
+      if (!pageId) {
+        return { success: false, error: "Facebook Page ID not configured." };
+      }
+      return publishToFacebook({
+        accessToken: conn.accessToken,
+        pageId,
+        message: `${caption}\n\n${hashtags}`.trim(),
+        imageUrl: post.imageUrl ?? undefined,
+      });
+    }
+
+    case "linkedin": {
+      if (!conn.accountId) {
+        return { success: false, error: "LinkedIn Organization URN not configured." };
+      }
+      return publishToLinkedIn({
+        accessToken: conn.accessToken,
+        authorUrn: conn.accountId,
+        text: caption,
+        hashtags,
+        imageUrl: post.imageUrl ?? undefined,
+      });
+    }
+
+    case "youtube": {
+      const refreshToken = conn.refreshToken ?? undefined;
+      return publishYouTubeCommunityPost({
+        accessToken: conn.accessToken,
+        refreshToken,
+        text: post.title ? `${post.title}\n\n${caption}` : caption,
+        hashtags,
+        imageUrl: post.imageUrl ?? undefined,
+      });
+    }
+
+    default:
+      return { success: false, error: `Unknown platform: ${post.platform}` };
   }
 }

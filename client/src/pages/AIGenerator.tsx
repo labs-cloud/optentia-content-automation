@@ -13,6 +13,16 @@ import { useLocation } from "wouter";
 type Platform = "instagram" | "linkedin" | "facebook" | "youtube";
 type Pillar = "strong_opinion" | "practical_education" | "documentary" | "direct_promotion";
 
+type GeneratedPost = {
+  id: number;
+  platform: string;
+  title: string | null;
+  caption: string | null;
+  hashtags: string | null;
+  imageUrl: string | null;
+  status: string;
+};
+
 export default function AIGenerator() {
   const [, setLocation] = useLocation();
   const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>(["instagram"]);
@@ -21,6 +31,7 @@ export default function AIGenerator() {
   const [autoApproval, setAutoApproval] = useState(false);
   const [generatedCount, setGeneratedCount] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
 
   const utils = trpc.useUtils();
 
@@ -45,15 +56,28 @@ export default function AIGenerator() {
     }
     setIsGenerating(true);
     setGeneratedCount(0);
+    setGeneratedPosts([]);
     let count = 0;
+    const newPosts: GeneratedPost[] = [];
     for (const platform of selectedPlatforms) {
       try {
-        await generateMutation.mutateAsync({
+        const result = await generateMutation.mutateAsync({
           platform,
           contentPillar: selectedPillar,
           topic: topic || undefined,
           autoSubmitForApproval: !autoApproval,
         });
+        if (result) {
+          newPosts.push({
+            id: result.id,
+            platform: result.platform,
+            title: result.title ?? null,
+            caption: result.caption ?? null,
+            hashtags: result.hashtags ?? null,
+            imageUrl: (result as any).imageUrl ?? null,
+            status: result.status,
+          });
+        }
         count++;
         setGeneratedCount(count);
       } catch {
@@ -61,6 +85,7 @@ export default function AIGenerator() {
       }
     }
     setIsGenerating(false);
+    setGeneratedPosts(newPosts);
     if (count > 0) {
       toast.success(`Generated ${count} post${count > 1 ? "s" : ""} — ${autoApproval ? "saved as drafts" : "sent for approval"}`);
     }
@@ -246,6 +271,70 @@ export default function AIGenerator() {
             </Button>
           </div>
         </div>
+
+        {/* Generated Posts Preview */}
+        {generatedPosts.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+              <h2 className="text-base font-semibold">Generated Posts</h2>
+              <span className="text-xs text-muted-foreground">{generatedPosts.length} post{generatedPosts.length > 1 ? "s" : ""} created</span>
+            </div>
+            <div className="grid gap-4">
+              {generatedPosts.map((post) => {
+                const cfg = PLATFORM_CONFIG[post.platform as keyof typeof PLATFORM_CONFIG];
+                return (
+                  <Card key={post.id} className="bg-card border-border/50">
+                    <CardContent className="p-5">
+                      <div className="flex gap-4">
+                        {/* Image preview */}
+                        {post.imageUrl ? (
+                          <img
+                            src={post.imageUrl}
+                            alt="Generated"
+                            className="h-28 w-28 object-cover rounded-lg border border-border/50 shrink-0"
+                          />
+                        ) : (
+                          <div className={`h-28 w-28 rounded-lg ${cfg?.bgColor} border ${cfg?.borderColor} flex items-center justify-center shrink-0`}>
+                            <span className="text-3xl">{cfg?.icon}</span>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`text-xs font-semibold ${cfg?.color}`}>{cfg?.label}</span>
+                            <div className="px-2 py-0.5 rounded-full text-xs bg-amber-500/10 text-amber-400">
+                              {post.status === "pending_approval" ? "Pending Review" : "Draft"}
+                            </div>
+                            {post.imageUrl && (
+                              <div className="px-2 py-0.5 rounded-full text-xs bg-violet-500/10 text-violet-400">
+                                AI Image
+                              </div>
+                            )}
+                          </div>
+                          {post.title && (
+                            <p className="text-sm font-semibold mb-1 line-clamp-1">{post.title}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{post.caption}</p>
+                          {post.hashtags && (
+                            <p className="text-xs text-primary/60 mt-1.5 line-clamp-1">{post.hashtags}</p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+            <Button
+              variant="outline"
+              className="w-full text-sm gap-2"
+              onClick={() => setLocation("/queue")}
+            >
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Review & Approve in Content Queue
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

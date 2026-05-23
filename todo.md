@@ -54,3 +54,30 @@
 - [x] All 14 tests pass
 - [x] Cron handlers registered in Express server
 - [x] Save checkpoint
+
+## Phase 2 — Image Generation + Real Platform Posting
+
+### AI Image Generation
+- [x] Add imagePrompt and imageUrl columns to contentPosts schema
+- [x] Run pnpm db:push for schema migration
+- [x] Add generateImage call in posts.generateAI for instagram and facebook platforms
+- [x] Add generateImage call in cronHandlers.ts for scheduled generation
+- [x] Store generated image URL in post record
+- [x] Show image preview in ContentQueue approval cards
+- [x] Show image preview in AIGenerator result
+- [x] Show image thumbnail in ContentLibrary grid
+
+### Real Platform API Posting
+- [x] Build Meta Graph API publisher (Instagram + Facebook) in server/publishers/meta.ts
+- [x] Build LinkedIn Share API publisher in server/publishers/linkedin.ts
+- [x] Build YouTube Data API publisher in server/publishers/youtube.ts
+- [x] Wire all publishers into publishPostsHandler in cronHandlers.ts
+- [x] Wire manual publish button in ContentQueue (publish now action)
+- [x] Handle API errors gracefully with status update + owner notification
+- [x] Add publishedExternalId column to contentPosts for storing platform post IDs
+
+### Frontend Updates
+- [x] Show generated image in ContentQueue post cards
+- [x] Add "Publish Now" button for approved posts in ContentQueue
+- [x] Show external post ID / platform link after publishing
+- [x] Display image in AIGenerator after generation

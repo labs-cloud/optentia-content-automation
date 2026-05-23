@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { invokeLLM } from "../_core/llm";
+import { generateImage } from "../_core/imageGeneration";
 import { notifyOwner } from "../_core/notification";
 import {
   createContentPost,
@@ -239,6 +240,19 @@ export const postsRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" });
       }
 
+      // Generate an image for visual platforms (Instagram, Facebook)
+      let imageUrl: string | undefined;
+      let imagePrompt: string | undefined;
+      if (input.platform === "instagram" || input.platform === "facebook") {
+        try {
+          imagePrompt = `Professional social media graphic for a business automation company called Optentia. Theme: "${parsed.hook?.substring(0, 80)}". Style: clean, modern, dark background with teal/cyan accent colors, minimalist design, bold typography, no people, no faces. Suitable for ${input.platform}. High quality, 1:1 square format.`;
+          const imgResult = await generateImage({ prompt: imagePrompt });
+          if (imgResult?.url) imageUrl = imgResult.url;
+        } catch (imgErr) {
+          console.error("[posts] Image generation failed (non-fatal):", imgErr);
+        }
+      }
+
       const post = await createContentPost({
         title: parsed.hook?.substring(0, 100),
         caption: parsed.caption,
@@ -249,7 +263,9 @@ export const postsRouter = router({
         status: input.autoSubmitForApproval ? "pending_approval" : "draft",
         aiGenerated: true,
         generationPrompt: userMessage,
-        contentType: input.platform === "youtube" ? "video" : "text",
+        imageUrl,
+        imagePrompt,
+        contentType: input.platform === "youtube" ? "video" : (imageUrl ? "image" : "text"),
       });
 
       if (input.autoSubmitForApproval) {
@@ -283,5 +299,95 @@ export const postsRouter = router({
         eventType: "scheduled",
       });
       return updated;
+    }),
+
+  publishNow: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      if (post.status !== "approved" && post.status !== "scheduled") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved or scheduled posts can be published" });
+      }
+
+      const { getPlatformConnection } = await import("../db");
+      const { publishToInstagram, publishToFacebook } = await import("../publishers/meta");
+      const { publishToLinkedIn } = await import("../publishers/linkedin");
+      const { publishYouTubeCommunityPost } = await import("../publishers/youtube");
+
+      const conn = await getPlatformConnection(post.platform);
+      if (!conn?.accessToken) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `No credentials configured for ${post.platform}. Add them in Platform Settings.`,
+        });
+      }
+
+      const caption = post.caption ?? "";
+      const hashtags = post.hashtags ?? "";
+      let result: { success: boolean; externalPostId?: string; error?: string };
+
+      switch (post.platform) {
+        case "instagram":
+          result = await publishToInstagram({
+            accessToken: conn.accessToken,
+            accountId: conn.accountId ?? "",
+            caption: `${caption}\n\n${hashtags}`.trim(),
+            imageUrl: post.imageUrl ?? undefined,
+          });
+          break;
+        case "facebook":
+          result = await publishToFacebook({
+            accessToken: conn.accessToken,
+            pageId: conn.pageId ?? conn.accountId ?? "",
+            message: `${caption}\n\n${hashtags}`.trim(),
+            imageUrl: post.imageUrl ?? undefined,
+          });
+          break;
+        case "linkedin":
+          result = await publishToLinkedIn({
+            accessToken: conn.accessToken,
+            authorUrn: conn.accountId ?? "",
+            text: caption,
+            hashtags,
+            imageUrl: post.imageUrl ?? undefined,
+          });
+          break;
+        case "youtube":
+          result = await publishYouTubeCommunityPost({
+            accessToken: conn.accessToken,
+            refreshToken: conn.refreshToken ?? undefined,
+            text: post.title ? `${post.title}\n\n${caption}` : caption,
+            hashtags,
+            imageUrl: post.imageUrl ?? undefined,
+          });
+          break;
+        default:
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Unknown platform: ${post.platform}` });
+      }
+
+      if (!result.success) {
+        await updateContentPost(input.id, { status: "failed", publishError: result.error });
+        await recordAnalyticsEvent({ postId: input.id, platform: post.platform, eventType: "failed" });
+        await notifyOwner({
+          title: `⚠️ Publish Failed: ${post.platform}`,
+          content: `Failed to publish post "${post.title || caption.substring(0, 60)}" to ${post.platform}. Error: ${result.error ?? "Unknown error"}`,
+        });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error ?? "Publish failed" });
+      }
+
+      await updateContentPost(input.id, {
+        status: "published",
+        publishedAt: new Date(),
+        externalPostId: result.externalPostId,
+        publishError: null,
+      });
+      await recordAnalyticsEvent({ postId: input.id, platform: post.platform, eventType: "published" });
+      await notifyOwner({
+        title: `✓ Post Published: ${post.platform}`,
+        content: `Your ${post.platform} post "${post.title || caption.substring(0, 60)}..." was published successfully.`,
+      });
+
+      return { success: true, externalPostId: result.externalPostId };
     }),
 });
