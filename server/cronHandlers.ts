@@ -20,6 +20,8 @@ import { publishYouTubeCommunityPost } from "./publishers/youtube";
 const PLATFORM_PROMPTS: Record<string, string> = {
   instagram: `You are an expert Instagram content creator for Optentia, an AI systems and automation operator for businesses. Generate a high-performing Instagram post with a strong hook, engaging caption (150-300 words), 15-20 hashtags, and a clear CTA. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
   linkedin: `You are an expert LinkedIn thought leader for Optentia. Generate a professional LinkedIn post with a compelling opener, authority-building body (200-400 words), and 3-5 hashtags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+  linkedin_personal: `You are an expert LinkedIn thought leader for Optentia. Generate a professional LinkedIn post from a personal profile perspective — first-person voice, personal insights, and professional experience. Include a compelling opener, authority-building body (200-400 words), and 3-5 hashtags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+  linkedin_company: `You are an expert LinkedIn content strategist for Optentia's company page. Generate a professional LinkedIn post from a company perspective — brand voice, business insights, and company achievements. Include a compelling opener, authority-building body (200-400 words), and 3-5 hashtags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
   facebook: `You are an expert Facebook content creator for Optentia. Generate a discussion-driving post with strong opinion, engaging body (100-250 words), and 3-5 hashtags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
   youtube: `You are an expert YouTube content strategist for Optentia. Generate a video title, description (150-300 words), and 10-15 tags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
 };
@@ -282,9 +284,11 @@ async function publishPostToPlatform(post: {
       });
     }
 
-    case "linkedin": {
+    case "linkedin":
+    case "linkedin_personal":
+    case "linkedin_company": {
       if (!conn.accountId) {
-        return { success: false, error: "LinkedIn Organization URN not configured." };
+        return { success: false, error: `LinkedIn ${post.platform === "linkedin_company" ? "Organization" : "Person"} URN not configured.` };
       }
       return publishToLinkedIn({
         accessToken: conn.accessToken,

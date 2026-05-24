@@ -81,3 +81,21 @@
 - [x] Add "Publish Now" button for approved posts in ContentQueue
 - [x] Show external post ID / platform link after publishing
 - [x] Display image in AIGenerator after generation
+
+## Phase 3 — LinkedIn Dual Posting (Personal + Company Page)
+- [x] Add linkedin_personal and linkedin_company to platform enum in schema (platformConnections, contentPosts, analyticsEvents)
+- [x] Update LinkedIn publisher to support both personal URN and company URN (authorUrn param already supported)
+- [x] Update platforms router list to include linkedin_personal and linkedin_company
+- [x] Update posts router create/generateAI/publishNow to accept linkedin_personal and linkedin_company
+- [x] Seed LinkedIn personal (urn:li:person:sjUMosKpaE) and company (urn:li:organization:110145143) connections into database
+- [x] Run pnpm db:push for schema migration (drizzle/0003_normal_avengers.sql)
+- [x] Store LinkedIn access token and credentials as LINKEDIN_ACCESS_TOKEN, LINKEDIN_PERSON_URN, LINKEDIN_ORG_URN secrets
+- [x] Update Platforms.tsx to show 5 platform cards (linkedin_personal + linkedin_company separate)
+- [x] Update AIGenerator.tsx to default-select linkedin_personal and linkedin_company
+- [x] Update Schedules.tsx platform selector to include both LinkedIn targets
+- [x] Update ContentLibrary.tsx filter dropdown to include both LinkedIn targets
+- [x] Update PLATFORM_CONFIG in platformUtils.ts with labels/icons for both LinkedIn targets
+- [x] Write and pass 10 LinkedIn dual-posting tests (all 35 tests passing)
+- [x] Update schedules router create/update to accept linkedin_personal and linkedin_company
+- [x] Update cronHandlers.ts PLATFORM_PROMPTS with dedicated linkedin_personal and linkedin_company prompts
+- [x] Update cronHandlers.ts publishPostToPlatform switch to handle linkedin_personal and linkedin_company

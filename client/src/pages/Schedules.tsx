@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { CheckCircle2, Clock, Loader2, Plus, Timer, Trash2, Zap } from "lucide-react";
 
-type Platform = "instagram" | "linkedin" | "facebook" | "youtube";
+type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
 
 const PILLAR_OPTIONS = [
   { value: "strong_opinion", label: "Strong Opinion" },
@@ -26,7 +26,7 @@ export default function Schedules() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [cron, setCron] = useState("0 0 9 * * *");
-  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>(["instagram", "linkedin"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>(["instagram", "linkedin_personal", "linkedin_company"]);
   const [postsPerRun, setPostsPerRun] = useState(2);
   const [selectedPillars, setSelectedPillars] = useState<string[]>(["strong_opinion", "practical_education"]);
   const [generationPrompt, setGenerationPrompt] = useState("");
@@ -259,8 +259,8 @@ export default function Schedules() {
             {/* Platforms */}
             <div>
               <label className="text-xs text-muted-foreground mb-2 block">Target Platforms *</label>
-              <div className="grid grid-cols-4 gap-2">
-                {(["instagram", "linkedin", "facebook", "youtube"] as Platform[]).map((p) => {
+              <div className="grid grid-cols-3 gap-2">
+                {(["instagram", "linkedin_personal", "linkedin_company", "facebook", "youtube"] as Platform[]).map((p) => {
                   const cfg = PLATFORM_CONFIG[p];
                   const selected = selectedPlatforms.includes(p);
                   return (

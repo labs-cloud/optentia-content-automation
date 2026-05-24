@@ -148,13 +148,14 @@ describe("posts router", () => {
 });
 
 describe("platforms router", () => {
-  it("lists all 4 platforms", async () => {
+  it("lists all 5 platforms (including LinkedIn personal and company)", async () => {
     const caller = appRouter.createCaller(makeCtx());
     const result = await caller.platforms.list();
-    expect(result).toHaveLength(4);
+    expect(result).toHaveLength(5);
     const platformNames = result.map((p) => p.platform);
     expect(platformNames).toContain("instagram");
-    expect(platformNames).toContain("linkedin");
+    expect(platformNames).toContain("linkedin_personal");
+    expect(platformNames).toContain("linkedin_company");
     expect(platformNames).toContain("facebook");
     expect(platformNames).toContain("youtube");
   });

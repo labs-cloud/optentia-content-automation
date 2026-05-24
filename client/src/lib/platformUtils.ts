@@ -1,4 +1,4 @@
-export type Platform = "instagram" | "linkedin" | "facebook" | "youtube";
+export type Platform = "instagram" | "linkedin" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
 export type PostStatus = "draft" | "pending_approval" | "approved" | "scheduled" | "published" | "rejected" | "failed";
 
 export const PLATFORM_CONFIG: Record<Platform, {
@@ -21,6 +21,20 @@ export const PLATFORM_CONFIG: Record<Platform, {
     bgColor: "bg-blue-500/10",
     borderColor: "border-blue-500/30",
     icon: "💼",
+  },
+  linkedin_personal: {
+    label: "LinkedIn (Personal)",
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/10",
+    borderColor: "border-blue-500/30",
+    icon: "👤",
+  },
+  linkedin_company: {
+    label: "LinkedIn (Company)",
+    color: "text-sky-400",
+    bgColor: "bg-sky-500/10",
+    borderColor: "border-sky-500/30",
+    icon: "🏢",
   },
   facebook: {
     label: "Facebook",

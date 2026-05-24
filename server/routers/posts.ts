@@ -84,7 +84,7 @@ export const postsRouter = router({
       title: z.string().optional(),
       caption: z.string(),
       hashtags: z.string().optional(),
-      platform: z.enum(["instagram", "linkedin", "facebook", "youtube"]),
+      platform: z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]),
       contentType: z.enum(["text", "image", "video", "reel", "story", "carousel"]).default("text"),
       contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).optional(),
       scheduledAt: z.string().optional(),
@@ -186,14 +186,16 @@ export const postsRouter = router({
 
   generateAI: protectedProcedure
     .input(z.object({
-      platform: z.enum(["instagram", "linkedin", "facebook", "youtube"]),
+      platform: z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]),
       contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).default("strong_opinion"),
       topic: z.string().optional(),
       tone: z.string().optional(),
       autoSubmitForApproval: z.boolean().default(true),
     }))
     .mutation(async ({ input }) => {
-      const systemPrompt = PLATFORM_PROMPTS[input.platform];
+      // Map linkedin variants to the base linkedin prompt
+      const promptKey = (input.platform === "linkedin_personal" || input.platform === "linkedin_company") ? "linkedin" : input.platform;
+      const systemPrompt = PLATFORM_PROMPTS[promptKey];
       const pillarContext = CONTENT_PILLAR_CONTEXT[input.contentPillar];
 
       const userMessage = [
@@ -345,6 +347,8 @@ export const postsRouter = router({
           });
           break;
         case "linkedin":
+        case "linkedin_personal":
+        case "linkedin_company":
           result = await publishToLinkedIn({
             accessToken: conn.accessToken,
             authorUrn: conn.accountId ?? "",

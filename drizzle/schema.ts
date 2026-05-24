@@ -29,7 +29,7 @@ export type InsertUser = typeof users.$inferInsert;
 
 export const platformConnections = mysqlTable("platform_connections", {
   id: int("id").autoincrement().primaryKey(),
-  platform: mysqlEnum("platform", ["instagram", "linkedin", "facebook", "youtube"]).notNull(),
+  platform: mysqlEnum("platform", ["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]).notNull(),
   accountName: varchar("accountName", { length: 255 }),
   accountId: varchar("accountId", { length: 255 }),
   apiKey: text("apiKey"),
@@ -53,7 +53,7 @@ export const contentPosts = mysqlTable("content_posts", {
   title: varchar("title", { length: 500 }),
   caption: text("caption"),
   hashtags: text("hashtags"),
-  platform: mysqlEnum("platform", ["instagram", "linkedin", "facebook", "youtube"]).notNull(),
+  platform: mysqlEnum("platform", ["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]).notNull(),
   contentType: mysqlEnum("contentType", ["text", "image", "video", "reel", "story", "carousel"]).default("text").notNull(),
   contentPillar: mysqlEnum("contentPillar", ["strong_opinion", "practical_education", "documentary", "direct_promotion"]).default("strong_opinion"),
   status: mysqlEnum("status", ["draft", "pending_approval", "approved", "scheduled", "published", "rejected", "failed"]).default("draft").notNull(),
@@ -126,7 +126,7 @@ export type InsertMediaAsset = typeof mediaAssets.$inferInsert;
 export const analyticsEvents = mysqlTable("analytics_events", {
   id: int("id").autoincrement().primaryKey(),
   postId: int("postId").notNull(),
-  platform: mysqlEnum("platform", ["instagram", "linkedin", "facebook", "youtube"]).notNull(),
+  platform: mysqlEnum("platform", ["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]).notNull(),
   eventType: mysqlEnum("eventType", ["published", "failed", "rejected", "approved", "scheduled"]).notNull(),
   metadata: text("metadata"), // JSON
   recordedAt: timestamp("recordedAt").defaultNow().notNull(),

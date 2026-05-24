@@ -1,0 +1,3 @@
+ALTER TABLE `analytics_events` MODIFY COLUMN `platform` enum('instagram','linkedin','linkedin_personal','linkedin_company','facebook','youtube') NOT NULL;--> statement-breakpoint
+ALTER TABLE `content_posts` MODIFY COLUMN `platform` enum('instagram','linkedin','linkedin_personal','linkedin_company','facebook','youtube') NOT NULL;--> statement-breakpoint
+ALTER TABLE `platform_connections` MODIFY COLUMN `platform` enum('instagram','linkedin','linkedin_personal','linkedin_company','facebook','youtube') NOT NULL;

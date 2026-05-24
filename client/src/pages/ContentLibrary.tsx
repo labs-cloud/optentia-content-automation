@@ -23,7 +23,8 @@ const STATUS_OPTIONS = [
 const PLATFORM_OPTIONS = [
   { value: "all", label: "All Platforms" },
   { value: "instagram", label: "Instagram" },
-  { value: "linkedin", label: "LinkedIn" },
+  { value: "linkedin_personal", label: "LinkedIn (Personal)" },
+  { value: "linkedin_company", label: "LinkedIn (Company)" },
   { value: "facebook", label: "Facebook" },
   { value: "youtube", label: "YouTube" },
 ];

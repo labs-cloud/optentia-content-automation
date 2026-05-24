@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { CheckCircle2, Loader2, Sparkles, Zap } from "lucide-react";
 import { useLocation } from "wouter";
 
-type Platform = "instagram" | "linkedin" | "facebook" | "youtube";
+type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
 type Pillar = "strong_opinion" | "practical_education" | "documentary" | "direct_promotion";
 
 type GeneratedPost = {
@@ -25,7 +25,7 @@ type GeneratedPost = {
 
 export default function AIGenerator() {
   const [, setLocation] = useLocation();
-  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>(["instagram"]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>(["instagram", "linkedin_personal", "linkedin_company"]);
   const [selectedPillar, setSelectedPillar] = useState<Pillar>("strong_opinion");
   const [topic, setTopic] = useState("");
   const [autoApproval, setAutoApproval] = useState(false);
@@ -131,7 +131,8 @@ export default function AIGenerator() {
                         <p className="text-sm font-medium">{cfg.label}</p>
                         <p className="text-xs opacity-70">
                           {platform === "instagram" ? "Reels & captions" :
-                           platform === "linkedin" ? "Thought leadership" :
+                           platform === "linkedin_personal" ? "Personal thought leadership" :
+                           platform === "linkedin_company" ? "Company page posts" :
                            platform === "facebook" ? "Discussion posts" :
                            "Video scripts"}
                         </p>

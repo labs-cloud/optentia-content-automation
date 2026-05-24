@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { toast } from "sonner";
 import { CheckCircle2, Loader2, Settings, Wifi, WifiOff, Zap } from "lucide-react";
 
-type Platform = "instagram" | "linkedin" | "facebook" | "youtube";
+type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
 
 const PLATFORM_HELP: Record<Platform, { fields: { key: string; label: string; placeholder: string; type?: string }[]; guide: string }> = {
   instagram: {
@@ -19,13 +19,21 @@ const PLATFORM_HELP: Record<Platform, { fields: { key: string; label: string; pl
     ],
     guide: "Requires a Facebook Business account with Instagram connected. Get your access token from Meta Developer Portal.",
   },
-  linkedin: {
+  linkedin_personal: {
+    fields: [
+      { key: "accountName", label: "Profile Name", placeholder: "Your Name" },
+      { key: "accessToken", label: "Access Token", placeholder: "LinkedIn OAuth 2.0 access token", type: "password" },
+      { key: "accountId", label: "Person URN", placeholder: "urn:li:person:XXXXXXXXXX" },
+    ],
+    guide: "Personal LinkedIn profile posting. Requires w_member_social scope. Token is pre-configured from your LinkedIn Developer App.",
+  },
+  linkedin_company: {
     fields: [
       { key: "accountName", label: "Company Name", placeholder: "Optentia" },
       { key: "accessToken", label: "Access Token", placeholder: "LinkedIn OAuth 2.0 access token", type: "password" },
       { key: "accountId", label: "Organization URN", placeholder: "urn:li:organization:12345678" },
     ],
-    guide: "Create a LinkedIn App at developers.linkedin.com. Use the Share on LinkedIn API with w_member_social scope.",
+    guide: "Company page posting. Requires w_organization_social scope. The token must belong to an admin of the company page.",
   },
   facebook: {
     fields: [
@@ -45,6 +53,8 @@ const PLATFORM_HELP: Record<Platform, { fields: { key: string; label: string; pl
     guide: "Enable YouTube Data API v3 in Google Cloud Console. Use OAuth 2.0 with youtube.upload scope.",
   },
 };
+
+const PLATFORM_ORDER: Platform[] = ["instagram", "linkedin_personal", "linkedin_company", "facebook", "youtube"];
 
 export default function Platforms() {
   const [editPlatform, setEditPlatform] = useState<Platform | null>(null);
@@ -111,7 +121,7 @@ export default function Platforms() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {(["instagram", "linkedin", "facebook", "youtube"] as Platform[]).map((platform) => {
+        {PLATFORM_ORDER.map((platform) => {
           const cfg = PLATFORM_CONFIG[platform];
           const conn = platforms?.find((p) => p.platform === platform);
           const isConnected = conn?.status === "connected";
@@ -198,6 +208,7 @@ export default function Platforms() {
         <CardContent className="p-5">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">Integration Notes</p>
           <div className="space-y-2 text-xs text-muted-foreground">
+            <p>• LinkedIn Personal and Company Page are separate connections — both use the same access token but different author URNs.</p>
             <p>• All credentials are stored securely and never exposed in the frontend.</p>
             <p>• Platform APIs are used to publish approved and scheduled posts automatically.</p>
             <p>• You will receive an owner notification if any connection fails during publishing.</p>

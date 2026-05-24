@@ -13,7 +13,7 @@ export const platformsRouter = router({
   list: protectedProcedure.query(async () => {
     const connections = await getPlatformConnections();
     // Ensure all 4 platforms are represented
-    const platforms = ["instagram", "linkedin", "facebook", "youtube"] as const;
+    const platforms = ["instagram", "linkedin_personal", "linkedin_company", "facebook", "youtube"] as const;
     const map = new Map(connections.map((c) => [c.platform, c]));
     return platforms.map((p) => map.get(p) ?? {
       id: null,
@@ -33,14 +33,14 @@ export const platformsRouter = router({
   }),
 
   get: protectedProcedure
-    .input(z.object({ platform: z.enum(["instagram", "linkedin", "facebook", "youtube"]) }))
+    .input(z.object({ platform: z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]) }))
     .query(async ({ input }) => {
       return getPlatformConnection(input.platform);
     }),
 
   upsert: protectedProcedure
     .input(z.object({
-      platform: z.enum(["instagram", "linkedin", "facebook", "youtube"]),
+      platform: z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]),
       accountName: z.string().optional(),
       accountId: z.string().optional(),
       apiKey: z.string().optional(),
@@ -58,7 +58,7 @@ export const platformsRouter = router({
     }),
 
   testConnection: protectedProcedure
-    .input(z.object({ platform: z.enum(["instagram", "linkedin", "facebook", "youtube"]) }))
+    .input(z.object({ platform: z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]) }))
     .mutation(async ({ input }) => {
       const connection = await getPlatformConnection(input.platform);
       if (!connection) {
