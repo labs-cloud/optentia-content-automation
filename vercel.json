@@ -3,7 +3,8 @@
   "outputDirectory": "dist/public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/manus-storage/(.*)", "destination": "/api/index" }
+    { "source": "/manus-storage/(.*)", "destination": "/api/index" },
+    { "source": "/((?!api|manus-storage|assets|_next).*)", "destination": "/index.html" }
   ],
   "crons": [
     { "path": "/api/scheduled/check-and-run", "schedule": "*/15 * * * *" }
