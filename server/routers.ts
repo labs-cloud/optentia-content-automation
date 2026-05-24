@@ -8,6 +8,7 @@ import { analyticsRouter } from "./routers/analytics";
 import { schedulesRouter } from "./routers/schedules";
 import { mediaRouter } from "./routers/media";
 import { heygenRouter } from "./routers/heygen";
+import { emailAuthRouter } from "./routers/emailAuth";
 
 export const appRouter = router({
   system: systemRouter,
@@ -25,6 +26,7 @@ export const appRouter = router({
   schedules: schedulesRouter,
   media: mediaRouter,
   heygen: heygenRouter,
+  emailAuth: emailAuthRouter,
 });
 
 export type AppRouter = typeof appRouter;

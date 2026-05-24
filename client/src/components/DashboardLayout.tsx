@@ -1,4 +1,3 @@
-import { getLoginUrl } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -75,30 +74,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (loading) return <DashboardLayoutSkeleton />;
 
   if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-sm w-full">
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="h-7 w-7 text-primary" />
-              <span className="text-2xl font-display font-bold tracking-tight">Optentia</span>
-            </div>
-            <p className="text-sm text-muted-foreground text-center">
-              AI Content & Automation Platform
-            </p>
-          </div>
-          <div className="w-full space-y-3">
-            <h2 className="text-lg font-semibold text-center">Sign in to continue</h2>
-            <p className="text-sm text-muted-foreground text-center">
-              Access your content management dashboard.
-            </p>
-          </div>
-          <Button size="lg" className="w-full glow-primary" onClick={() => { window.location.href = getLoginUrl(); }}>
-            Sign in
-          </Button>
-        </div>
-      </div>
-    );
+    // Redirect to the email/password login page
+    window.location.replace("/login");
+    return <DashboardLayoutSkeleton />;
   }
 
   return (

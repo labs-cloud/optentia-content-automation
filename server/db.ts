@@ -60,6 +60,40 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result[0];
+}
+
+export async function createUserWithPassword(params: {
+  openId: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  role?: "user" | "admin";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(users).values({
+    openId: params.openId,
+    name: params.name,
+    email: params.email,
+    passwordHash: params.passwordHash,
+    loginMethod: "email",
+    role: params.role ?? "user",
+    lastSignedIn: new Date(),
+  });
+  return getUserByEmail(params.email);
+}
+
+export async function updateUserPassword(openId: string, passwordHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ passwordHash }).where(eq(users.openId, openId));
+}
+
 // ─── Platform Connections ─────────────────────────────────────────────────────
 
 export async function getPlatformConnections() {

@@ -99,3 +99,15 @@
 - [x] Update schedules router create/update to accept linkedin_personal and linkedin_company
 - [x] Update cronHandlers.ts PLATFORM_PROMPTS with dedicated linkedin_personal and linkedin_company prompts
 - [x] Update cronHandlers.ts publishPostToPlatform switch to handle linkedin_personal and linkedin_company
+
+## Phase 4 — Manus Independence (Vercel self-hosted auth)
+- [ ] Replace Manus OAuth with email/password auth (bcrypt + JWT)
+- [ ] Add /api/auth/login and /api/auth/register endpoints
+- [ ] Remove all Manus OAuth SDK dependencies from server
+- [ ] Build login page UI (email + password form)
+- [ ] Build register page UI (first-time setup)
+- [ ] Wire LLM directly to ANTHROPIC_API_KEY (remove BUILT_IN_FORGE_API_KEY dependency)
+- [ ] Seed owner account in database
+- [ ] Inject new env vars into Vercel
+- [ ] Push and trigger Vercel redeploy
+- [ ] Verify login works on Vercel production URL
