@@ -1,4 +1,4 @@
-import { SignInButton } from "@clerk/clerk-react";
+import { getLoginUrl } from "@/const";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -93,11 +93,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               Access your content management dashboard.
             </p>
           </div>
-          <SignInButton mode="modal">
-            <Button size="lg" className="w-full glow-primary">
-              Sign in
-            </Button>
-          </SignInButton>
+          <Button size="lg" className="w-full glow-primary" onClick={() => { window.location.href = getLoginUrl(); }}>
+            Sign in
+          </Button>
         </div>
       </div>
     );
