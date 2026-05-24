@@ -64,7 +64,7 @@ export default function Schedules() {
     setName("");
     setDescription("");
     setCron("0 0 9 * * *");
-    setSelectedPlatforms(["instagram", "linkedin"]);
+    setSelectedPlatforms(["instagram", "linkedin_personal", "linkedin_company"]);
     setPostsPerRun(2);
     setSelectedPillars(["strong_opinion", "practical_education"]);
     setGenerationPrompt("");
