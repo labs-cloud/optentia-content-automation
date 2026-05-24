@@ -1,3 +1,7 @@
+/**
+ * Vercel serverless entry point.
+ * Exports the Express app as the default handler instead of calling listen().
+ */
 import "dotenv/config";
 import express from "express";
 import { clerkMiddleware } from "@clerk/express";
