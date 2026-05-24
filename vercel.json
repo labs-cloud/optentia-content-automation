@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "buildCommand": "pnpm run build:vercel",
+  "installCommand": "pnpm install",
+  "functions": {
+    "api/index.js": {
+      "runtime": "nodejs22.x",
+      "maxDuration": 30,
+      "includeFiles": "api/public/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/index.js"
+    }
+  ]
+}
