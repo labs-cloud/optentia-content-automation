@@ -23,12 +23,14 @@ function createAuthContext(): TrpcContext {
       protocol: "https",
       headers: {},
     } as TrpcContext["req"],
-    res: {} as TrpcContext["res"],
+    res: {
+      clearCookie: () => {},
+    } as unknown as TrpcContext["res"],
   };
 }
 
 describe("auth.logout", () => {
-  it("returns success (session managed by Clerk on the frontend)", async () => {
+  it("returns success and clears the session cookie", async () => {
     const ctx = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
