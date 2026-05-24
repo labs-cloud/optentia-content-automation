@@ -28,7 +28,7 @@ export async function generateImage(
     response_format: "b64_json",
   });
 
-  const b64 = response.data[0]?.b64_json;
+  const b64 = response.data?.[0]?.b64_json;
   if (!b64) throw new Error("DALL-E 3 returned no image data");
 
   const buffer = Buffer.from(b64, "base64");

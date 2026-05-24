@@ -227,7 +227,8 @@ export const postsRouter = router({
       autoSubmitForApproval: z.boolean().default(true),
     }))
     .mutation(async ({ input }) => {
-      const systemPrompt = PLATFORM_PROMPTS[input.platform] ?? PLATFORM_PROMPTS.linkedin;
+      const promptKey = (input.platform === "linkedin_personal" || input.platform === "linkedin_company") ? input.platform : input.platform;
+      const systemPrompt = PLATFORM_PROMPTS[promptKey] ?? PLATFORM_PROMPTS["linkedin"];
       const pillarContext = CONTENT_PILLAR_CONTEXT[input.contentPillar];
 
       const userMessage = [

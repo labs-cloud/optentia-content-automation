@@ -259,7 +259,7 @@ async function runPublishPosts(): Promise<{ published: number; failed: number }>
 
 // ─── HTTP Handlers ────────────────────────────────────────────────────────────
 
-/** Single combined endpoint used by Vercel Cron (*/15 * * * *) */
+// Single combined endpoint used by Vercel Cron (every 15 minutes)
 export async function checkAndRunHandler(req: Request, res: Response) {
   if (!validateCronRequest(req)) {
     return res.status(403).json({ error: "Unauthorized" });
