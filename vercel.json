@@ -1,12 +1,11 @@
 {
-  "buildCommand": "pnpm build",
+  "buildCommand": "pnpm build:vercel",
   "outputDirectory": "dist/public",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/manus-storage/(.*)", "destination": "/api/index" }
   ],
   "crons": [
-    { "path": "/api/scheduled/generate-content", "schedule": "0 * * * *" },
-    { "path": "/api/scheduled/publish-posts", "schedule": "*/15 * * * *" }
+    { "path": "/api/scheduled/check-and-run", "schedule": "*/15 * * * *" }
   ]
 }

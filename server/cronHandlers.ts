@@ -90,8 +90,8 @@ Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
 
 Write a YouTube video package that:
 - Creates a compelling, search-optimized title
-- Writes a hook for the first 30 seconds (what viewers will learn)
-- Writes an optimized video description (150-300 words) covering the topic with timestamps placeholder
+- Writes a hook script for the first 30 seconds (what viewers will learn and why it matters now)
+- Writes an optimized video description (150-300 words) covering the topic with a timestamp placeholder
 - Includes 10-15 SEO-optimized tags
 
 Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
@@ -104,15 +104,15 @@ const CONTENT_PILLARS = [
   "direct_promotion",
 ] as const;
 
-// ─── Generate Content Handler ─────────────────────────────────────────────────
+// ─── Core Logic (no req/res — callable from any handler) ──────────────────────
 
-export async function generateContentHandler(req: Request, res: Response) {
-  if (!validateCronRequest(req)) {
-    return res.status(403).json({ error: "Unauthorized" });
-  }
-
+async function runGenerateContent(): Promise<{
+  schedulesRun: number;
+  generated: number;
+  postIds: number[];
+}> {
   const dueSchedules = await getActiveSchedulesDue();
-  const totalGenerated: number[] = [];
+  const allPostIds: number[] = [];
 
   for (const schedule of dueSchedules) {
     const platforms: string[] = JSON.parse(schedule.platforms || "[]");
@@ -181,7 +181,6 @@ export async function generateContentHandler(req: Request, res: Response) {
       }
     }
 
-    // Advance the schedule's run timestamps
     let nextRunAt: Date | undefined;
     try {
       nextRunAt = computeNextRunAt(schedule.cron);
@@ -198,25 +197,14 @@ export async function generateContentHandler(req: Request, res: Response) {
         title: `${generatedPosts.length} New Post${generatedPosts.length > 1 ? "s" : ""} Pending Approval`,
         content: `The "${schedule.name}" schedule generated ${generatedPosts.length} new post${generatedPosts.length > 1 ? "s" : ""} across ${platforms.join(", ")}. Review and approve them in your content queue.`,
       });
-      totalGenerated.push(...generatedPosts);
+      allPostIds.push(...generatedPosts);
     }
   }
 
-  return res.json({
-    ok: true,
-    schedulesRun: dueSchedules.length,
-    generated: totalGenerated.length,
-    postIds: totalGenerated,
-  });
+  return { schedulesRun: dueSchedules.length, generated: allPostIds.length, postIds: allPostIds };
 }
 
-// ─── Publish Posts Handler ────────────────────────────────────────────────────
-
-export async function publishPostsHandler(req: Request, res: Response) {
-  if (!validateCronRequest(req)) {
-    return res.status(403).json({ error: "Unauthorized" });
-  }
-
+async function runPublishPosts(): Promise<{ published: number; failed: number }> {
   const duePosts = await getScheduledPostsDue();
   const published: number[] = [];
   const failed: number[] = [];
@@ -232,33 +220,16 @@ export async function publishPostsHandler(req: Request, res: Response) {
           externalPostId: result.externalPostId,
           publishError: null,
         });
-
-        await recordAnalyticsEvent({
-          postId: post.id,
-          platform: post.platform,
-          eventType: "published",
-        });
-
+        await recordAnalyticsEvent({ postId: post.id, platform: post.platform, eventType: "published" });
         published.push(post.id);
-
         await notifyOwner({
           title: `Post Published: ${post.platform}`,
           content: `Your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}..." has been published successfully.${result.externalPostId ? ` Post ID: ${result.externalPostId}` : ""}`,
         });
       } else {
-        await updateContentPost(post.id, {
-          status: "failed",
-          publishError: result.error,
-        });
-
-        await recordAnalyticsEvent({
-          postId: post.id,
-          platform: post.platform,
-          eventType: "failed",
-        });
-
+        await updateContentPost(post.id, { status: "failed", publishError: result.error });
+        await recordAnalyticsEvent({ postId: post.id, platform: post.platform, eventType: "failed" });
         failed.push(post.id);
-
         await notifyOwner({
           title: `Publish Failed: ${post.platform}`,
           content: `Failed to publish your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}...". Error: ${result.error}`,
@@ -283,7 +254,55 @@ export async function publishPostsHandler(req: Request, res: Response) {
     }
   }
 
-  return res.json({ ok: true, published: published.length, failed: failed.length });
+  return { published: published.length, failed: failed.length };
+}
+
+// ─── HTTP Handlers ────────────────────────────────────────────────────────────
+
+/** Single combined endpoint used by Vercel Cron (*/15 * * * *) */
+export async function checkAndRunHandler(req: Request, res: Response) {
+  if (!validateCronRequest(req)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const [genResult, pubResult] = await Promise.all([
+      runGenerateContent(),
+      runPublishPosts(),
+    ]);
+    return res.json({ ok: true, ...genResult, ...pubResult });
+  } catch (err) {
+    console.error("[cron] check-and-run error:", err);
+    return res.status(500).json({ error: String(err), timestamp: new Date().toISOString() });
+  }
+}
+
+/** Kept for local dev convenience */
+export async function generateContentHandler(req: Request, res: Response) {
+  if (!validateCronRequest(req)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  try {
+    const result = await runGenerateContent();
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[cron] generateContent error:", err);
+    return res.status(500).json({ error: String(err), timestamp: new Date().toISOString() });
+  }
+}
+
+/** Kept for local dev convenience */
+export async function publishPostsHandler(req: Request, res: Response) {
+  if (!validateCronRequest(req)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  try {
+    const result = await runPublishPosts();
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("[cron] publishPosts error:", err);
+    return res.status(500).json({ error: String(err), timestamp: new Date().toISOString() });
+  }
 }
 
 // ─── Platform Dispatcher ──────────────────────────────────────────────────────
