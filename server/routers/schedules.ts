@@ -1,6 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { parseExpression } from "cron-parser";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { parseExpression } = require("cron-parser") as typeof import("cron-parser");
 import {
   createContentSchedule,
   deleteContentSchedule,

@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
-import { parseExpression } from "cron-parser";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const { parseExpression } = require("cron-parser") as typeof import("cron-parser");
 import { invokeLLM } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { notifyOwner } from "./_core/notification";
