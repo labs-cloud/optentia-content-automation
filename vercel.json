@@ -1,18 +1,11 @@
 {
-  "version": 2,
-  "buildCommand": "pnpm run build:vercel",
-  "installCommand": "pnpm install",
-  "functions": {
-    "api/index.js": {
-      "runtime": "nodejs22.x",
-      "maxDuration": 30,
-      "includeFiles": "api/public/**"
-    }
-  },
+  "buildCommand": "pnpm build:vercel",
+  "outputDirectory": "dist/public",
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/api/index.js"
-    }
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/manus-storage/(.*)", "destination": "/api/index" }
+  ],
+  "crons": [
+    { "path": "/api/scheduled/check-and-run", "schedule": "*/15 * * * *" }
   ]
 }

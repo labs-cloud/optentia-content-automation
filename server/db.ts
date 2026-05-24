@@ -16,8 +16,6 @@ import {
   platformConnections,
   users,
 } from "../drizzle/schema";
-import { ENV } from "./_core/env";
-
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export async function getDb() {
@@ -50,7 +48,6 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
   if (user.lastSignedIn !== undefined) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
   if (user.role !== undefined) { values.role = user.role; updateSet.role = user.role; }
-  else if (user.openId === ENV.ownerOpenId) { values.role = "admin"; updateSet.role = "admin"; }
   if (!values.lastSignedIn) values.lastSignedIn = new Date();
   if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
@@ -176,6 +173,18 @@ export async function getContentSchedules() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(contentSchedules).orderBy(contentSchedules.name);
+}
+
+export async function getActiveSchedulesDue() {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  const results = await db
+    .select()
+    .from(contentSchedules)
+    .where(eq(contentSchedules.isActive, true));
+  // Include schedules with no nextRunAt yet, or where nextRunAt is past due
+  return results.filter(s => !s.nextRunAt || s.nextRunAt <= now);
 }
 
 export async function getContentScheduleById(id: number) {
