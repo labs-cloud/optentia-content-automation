@@ -38,6 +38,7 @@ vi.mock("./db", () => ({
   createHeygenRequest: vi.fn().mockResolvedValue({ id: 1, title: "Test Video", scriptText: "Hello world", status: "pending" }),
   updateHeygenRequest: vi.fn().mockResolvedValue({ id: 1, status: "processing" }),
   getScheduledPostsDue: vi.fn().mockResolvedValue([]),
+  getActiveSchedulesDue: vi.fn().mockResolvedValue([]),
   upsertUser: vi.fn().mockResolvedValue(undefined),
   getUserByOpenId: vi.fn().mockResolvedValue(null),
 }));
@@ -68,13 +69,6 @@ vi.mock("./_core/notification", () => ({
   notifyOwner: vi.fn().mockResolvedValue(true),
 }));
 
-// ─── Mock heartbeat ───────────────────────────────────────────────────────────
-vi.mock("./_core/heartbeat", () => ({
-  createHeartbeatJob: vi.fn().mockResolvedValue({ taskUid: "test-uid-123" }),
-  updateHeartbeatJob: vi.fn().mockResolvedValue(undefined),
-  deleteHeartbeatJob: vi.fn().mockResolvedValue(undefined),
-}));
-
 // ─── Context factory ──────────────────────────────────────────────────────────
 function makeCtx(): TrpcContext {
   return {
@@ -83,7 +77,7 @@ function makeCtx(): TrpcContext {
       openId: "owner-open-id",
       name: "Test Owner",
       email: "owner@optentia.com",
-      loginMethod: "manus",
+      loginMethod: "clerk",
       role: "admin",
       createdAt: new Date(),
       updatedAt: new Date(),

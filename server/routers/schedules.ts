@@ -1,7 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { parse as parseCookie } from "cookie";
-import { COOKIE_NAME } from "../../shared/const";
+import { parseExpression } from "cron-parser";
 import {
   createContentSchedule,
   deleteContentSchedule,
@@ -10,7 +9,10 @@ import {
   updateContentSchedule,
 } from "../db";
 import { protectedProcedure, router } from "../_core/trpc";
-import { createHeartbeatJob, deleteHeartbeatJob, updateHeartbeatJob } from "../_core/heartbeat";
+
+function computeNextRunAt(cronExpr: string): Date {
+  return parseExpression(cronExpr, { utc: true }).next().toDate();
+}
 
 export const schedulesRouter = router({
   list: protectedProcedure.query(async () => {
@@ -26,17 +28,33 @@ export const schedulesRouter = router({
     }),
 
   create: protectedProcedure
-    .input(z.object({
-      name: z.string(),
-      description: z.string().optional(),
-      cron: z.string(),
-      platforms: z.array(z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"])),
-      postsPerRun: z.number().default(1),
-      contentPillars: z.array(z.string()).optional(),
-      generationPrompt: z.string().optional(),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
+    .input(
+      z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        cron: z.string(),
+        platforms: z.array(
+          z.enum([
+            "instagram",
+            "linkedin",
+            "linkedin_personal",
+            "linkedin_company",
+            "facebook",
+            "youtube",
+          ])
+        ),
+        postsPerRun: z.number().default(1),
+        contentPillars: z.array(z.string()).optional(),
+        generationPrompt: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      let nextRunAt: Date | undefined;
+      try {
+        nextRunAt = computeNextRunAt(input.cron);
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cron expression" });
+      }
 
       const schedule = await createContentSchedule({
         name: input.name,
@@ -47,97 +65,73 @@ export const schedulesRouter = router({
         contentPillars: input.contentPillars ? JSON.stringify(input.contentPillars) : null,
         generationPrompt: input.generationPrompt,
         isActive: true,
+        nextRunAt,
       });
 
       if (!schedule) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-
-      try {
-        const job = await createHeartbeatJob({
-          name: `content-gen-${schedule.id}`,
-          cron: input.cron,
-          path: "/api/scheduled/generate-content",
-          payload: { scheduleId: schedule.id },
-          description: `Content generation: ${input.name}`,
-        }, sessionToken);
-
-        await updateContentSchedule(schedule.id, { cronTaskUid: job.taskUid });
-        return { ...schedule, cronTaskUid: job.taskUid };
-      } catch (err) {
-        // Schedule created in DB but cron registration failed — still return it
-        console.error("[schedules] Failed to register heartbeat:", err);
-        return schedule;
-      }
+      return schedule;
     }),
 
   update: protectedProcedure
-    .input(z.object({
-      id: z.number(),
-      name: z.string().optional(),
-      description: z.string().optional(),
-      cron: z.string().optional(),
-      platforms: z.array(z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"])).optional(),
-      postsPerRun: z.number().optional(),
-      contentPillars: z.array(z.string()).optional(),
-      generationPrompt: z.string().optional(),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      const { id, platforms, contentPillars, ...rest } = input;
+    .input(
+      z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        description: z.string().optional(),
+        cron: z.string().optional(),
+        platforms: z
+          .array(
+            z.enum([
+              "instagram",
+              "linkedin",
+              "linkedin_personal",
+              "linkedin_company",
+              "facebook",
+              "youtube",
+            ])
+          )
+          .optional(),
+        postsPerRun: z.number().optional(),
+        contentPillars: z.array(z.string()).optional(),
+        generationPrompt: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { id, platforms, contentPillars, cron, ...rest } = input;
       const schedule = await getContentScheduleById(id);
       if (!schedule) throw new TRPCError({ code: "NOT_FOUND" });
 
-      const updated = await updateContentSchedule(id, {
-        ...rest,
-        platforms: platforms ? JSON.stringify(platforms) : undefined,
-        contentPillars: contentPillars ? JSON.stringify(contentPillars) : undefined,
-      });
-
-      if (input.cron && schedule.cronTaskUid) {
+      let nextRunAt: Date | undefined;
+      if (cron) {
         try {
-          const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-          await updateHeartbeatJob(schedule.cronTaskUid, { cron: input.cron }, sessionToken);
-        } catch (err) {
-          console.error("[schedules] Failed to update heartbeat:", err);
+          nextRunAt = computeNextRunAt(cron);
+        } catch {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid cron expression" });
         }
       }
 
-      return updated;
+      return updateContentSchedule(id, {
+        ...rest,
+        ...(cron ? { cron, nextRunAt } : {}),
+        platforms: platforms ? JSON.stringify(platforms) : undefined,
+        contentPillars: contentPillars ? JSON.stringify(contentPillars) : undefined,
+      });
     }),
 
   toggle: protectedProcedure
     .input(z.object({ id: z.number(), isActive: z.boolean() }))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       const schedule = await getContentScheduleById(input.id);
       if (!schedule) throw new TRPCError({ code: "NOT_FOUND" });
-
       await updateContentSchedule(input.id, { isActive: input.isActive });
-
-      if (schedule.cronTaskUid) {
-        try {
-          const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-          await updateHeartbeatJob(schedule.cronTaskUid, { enable: input.isActive }, sessionToken);
-        } catch (err) {
-          console.error("[schedules] Failed to toggle heartbeat:", err);
-        }
-      }
-
       return { success: true };
     }),
 
   delete: protectedProcedure
     .input(z.object({ id: z.number() }))
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       const schedule = await getContentScheduleById(input.id);
       if (!schedule) throw new TRPCError({ code: "NOT_FOUND" });
-
-      if (schedule.cronTaskUid) {
-        try {
-          const sessionToken = parseCookie(ctx.req.headers.cookie ?? "")[COOKIE_NAME] ?? "";
-          await deleteHeartbeatJob(schedule.cronTaskUid, sessionToken);
-        } catch (err) {
-          console.error("[schedules] Failed to delete heartbeat:", err);
-        }
-      }
-
       await deleteContentSchedule(input.id);
       return { success: true };
     }),

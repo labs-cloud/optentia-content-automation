@@ -15,37 +15,71 @@ import {
 import { protectedProcedure, router } from "../_core/trpc";
 
 const PLATFORM_PROMPTS: Record<string, string> = {
-  instagram: `You are an expert Instagram content creator for Optentia, an AI systems and automation operator for businesses.
-Generate a high-performing Instagram post. Include:
-- A strong hook in the first line (under 125 chars before "more")
-- Engaging caption (150-300 words) with bold opinions or practical insights
-- 15-20 relevant hashtags
-- A clear CTA (e.g., "DM me 'SYSTEM'")
-Format: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+  instagram: `You are an expert Instagram content creator for Optentia — an AI systems and automation operator for businesses.
 
-  linkedin: `You are an expert LinkedIn thought leader for Optentia, an AI systems and automation operator for businesses.
-Generate a professional LinkedIn post. Include:
-- A compelling opening line that stops the scroll
-- Authority-building body (200-400 words) with business systems insight
-- Professional CTA
-- 3-5 relevant hashtags
-Format: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+Will Hershey is the founder and face of this account. Audience: business owners who want to implement AI.
 
-  facebook: `You are an expert Facebook content creator for Optentia, an AI systems and automation operator for businesses.
-Generate a discussion-driving Facebook post. Include:
-- Strong opinion or commentary opener
-- Engaging body (100-250 words) that invites discussion
-- Question to drive comments
-- 3-5 hashtags
-Format: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+Write a high-performing Instagram post that:
+- Opens with a bold, scroll-stopping hook (under 125 characters before "more")
+- Delivers a sharp insight on AI systems, automation, or business operations (150-300 words)
+- Uses direct, intelligent language — no hype, no buzzwords
+- Closes with a specific CTA (e.g., "DM me 'SYSTEM'" or "Link in bio")
+- Includes 15-20 targeted hashtags in the hashtags field
 
-  youtube: `You are an expert YouTube content strategist for Optentia, an AI systems and automation operator for businesses.
-Generate a YouTube video script outline. Include:
-- Compelling video title
-- Hook (first 30 seconds script)
-- Video description (150-300 words) optimized for search
-- Tags (10-15 relevant tags)
-Format: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
+Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  linkedin: `You are a LinkedIn ghostwriter for Will Hershey, founder of Optentia — an AI systems and automation operator for businesses.
+
+Write a personal LinkedIn post that:
+- Opens with a single punchy line that makes people stop scrolling
+- Shares a genuine perspective from operating an AI automation business (200-400 words)
+- Writes in first person, conversational but authoritative
+- Ends with a clear next step or question
+- Includes 3-5 strategic hashtags
+
+Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  linkedin_personal: `You are a LinkedIn ghostwriter for Will Hershey, founder of Optentia — an AI systems and automation operator for businesses.
+
+Write a personal LinkedIn post that:
+- Opens with a single punchy line that makes people stop scrolling
+- Shares a genuine first-person perspective on AI, automation, or business building (200-400 words)
+- Writes in first person — direct and confident, not corporate
+- Ends with a clear insight or question to drive comments
+- Includes 3-5 strategic hashtags
+
+Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  linkedin_company: `You are a LinkedIn content strategist for Optentia, an AI systems and automation operator for businesses.
+
+Write a company LinkedIn post that:
+- Opens with a bold business insight or data point
+- Establishes Optentia's authority in AI systems and automation (200-400 words)
+- Uses confident, professional brand voice — not generic corporate speak
+- Ends with a clear value proposition or CTA for business owners
+- Includes 3-5 industry hashtags
+
+Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  facebook: `You are a Facebook content creator for Optentia — an AI systems and automation operator for businesses.
+
+Write a discussion-driving Facebook post that:
+- Opens with a controversial or counterintuitive statement about AI or business
+- Develops the idea with specific examples (100-250 words)
+- Ends with a direct question that invites business owners to respond
+- Includes 3-5 relevant hashtags
+
+Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  youtube: `You are a YouTube content strategist for Optentia — an AI systems and automation operator for businesses.
+
+Write a YouTube video package that:
+- Creates a compelling, search-optimized title
+- Writes a hook script for the first 30 seconds (what viewers will learn and why it matters now)
+- Writes an optimized video description (150-300 words) covering the topic with a timestamp placeholder
+- Includes 10-15 SEO-optimized tags
+
+Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
 };
 
 const CONTENT_PILLAR_CONTEXT: Record<string, string> = {
@@ -193,9 +227,7 @@ export const postsRouter = router({
       autoSubmitForApproval: z.boolean().default(true),
     }))
     .mutation(async ({ input }) => {
-      // Map linkedin variants to the base linkedin prompt
-      const promptKey = (input.platform === "linkedin_personal" || input.platform === "linkedin_company") ? "linkedin" : input.platform;
-      const systemPrompt = PLATFORM_PROMPTS[promptKey];
+      const systemPrompt = PLATFORM_PROMPTS[input.platform] ?? PLATFORM_PROMPTS.linkedin;
       const pillarContext = CONTENT_PILLAR_CONTEXT[input.contentPillar];
 
       const userMessage = [
@@ -211,24 +243,6 @@ export const postsRouter = router({
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
         ],
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "social_post",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                caption: { type: "string" },
-                hashtags: { type: "string" },
-                hook: { type: "string" },
-                scriptText: { type: "string" },
-              },
-              required: ["caption", "hashtags", "hook"],
-              additionalProperties: false,
-            },
-          },
-        },
       });
 
       const rawContent = response.choices[0]?.message?.content;

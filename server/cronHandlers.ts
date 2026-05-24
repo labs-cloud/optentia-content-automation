@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
+import { parseExpression } from "cron-parser";
 import { invokeLLM } from "./_core/llm";
 import { generateImage } from "./_core/imageGeneration";
 import { notifyOwner } from "./_core/notification";
-import { sdk } from "./_core/sdk";
+import { ENV } from "./_core/env";
 import {
   createContentPost,
-  getScheduleByCronTaskUid,
+  getActiveSchedulesDue,
   getScheduledPostsDue,
   getPlatformConnection,
   getPlatformConnections,
@@ -17,35 +18,103 @@ import { publishToInstagram, publishToFacebook } from "./publishers/meta";
 import { publishToLinkedIn } from "./publishers/linkedin";
 import { publishYouTubeCommunityPost } from "./publishers/youtube";
 
+function validateCronRequest(req: Request): boolean {
+  if (!ENV.cronSecret) return false;
+  return req.headers.authorization === `Bearer ${ENV.cronSecret}`;
+}
+
+function computeNextRunAt(cronExpr: string): Date {
+  return parseExpression(cronExpr, { utc: true }).next().toDate();
+}
+
+// ─── Platform Prompts ─────────────────────────────────────────────────────────
+
 const PLATFORM_PROMPTS: Record<string, string> = {
-  instagram: `You are an expert Instagram content creator for Optentia, an AI systems and automation operator for businesses. Generate a high-performing Instagram post with a strong hook, engaging caption (150-300 words), 15-20 hashtags, and a clear CTA. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-  linkedin: `You are an expert LinkedIn thought leader for Optentia. Generate a professional LinkedIn post with a compelling opener, authority-building body (200-400 words), and 3-5 hashtags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-  linkedin_personal: `You are an expert LinkedIn thought leader for Optentia. Generate a professional LinkedIn post from a personal profile perspective — first-person voice, personal insights, and professional experience. Include a compelling opener, authority-building body (200-400 words), and 3-5 hashtags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-  linkedin_company: `You are an expert LinkedIn content strategist for Optentia's company page. Generate a professional LinkedIn post from a company perspective — brand voice, business insights, and company achievements. Include a compelling opener, authority-building body (200-400 words), and 3-5 hashtags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-  facebook: `You are an expert Facebook content creator for Optentia. Generate a discussion-driving post with strong opinion, engaging body (100-250 words), and 3-5 hashtags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-  youtube: `You are an expert YouTube content strategist for Optentia. Generate a video title, description (150-300 words), and 10-15 tags. Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
+  instagram: `You are an expert Instagram content creator for Optentia — an AI systems and automation operator for businesses.
+
+Will Hershey is the founder and face of this account. Audience: business owners who want to implement AI.
+
+Write a high-performing Instagram post that:
+- Opens with a bold, scroll-stopping hook (under 125 characters before "more")
+- Delivers a sharp insight on AI systems, automation, or business operations (150-300 words)
+- Uses direct, intelligent language — no hype, no buzzwords
+- Closes with a specific CTA (e.g., "DM me 'SYSTEM'" or "Link in bio")
+- Includes 15-20 targeted hashtags in the hashtags field
+
+Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  linkedin: `You are a LinkedIn ghostwriter for Will Hershey, founder of Optentia — an AI systems and automation operator for businesses.
+
+Write a personal LinkedIn post that:
+- Opens with a single punchy line that makes people stop scrolling
+- Shares a genuine perspective from operating an AI automation business (200-400 words)
+- Writes in first person, conversational but authoritative
+- Ends with a clear next step or question
+- Includes 3-5 strategic hashtags
+
+Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  linkedin_personal: `You are a LinkedIn ghostwriter for Will Hershey, founder of Optentia — an AI systems and automation operator for businesses.
+
+Write a personal LinkedIn post that:
+- Opens with a single punchy line that makes people stop scrolling
+- Shares a genuine first-person perspective on AI, automation, or business building (200-400 words)
+- Writes in first person — direct and confident, not corporate
+- Ends with a clear insight or question to drive comments
+- Includes 3-5 strategic hashtags
+
+Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  linkedin_company: `You are a LinkedIn content strategist for Optentia, an AI systems and automation operator for businesses.
+
+Write a company LinkedIn post that:
+- Opens with a bold business insight or data point
+- Establishes Optentia's authority in AI systems and automation (200-400 words)
+- Uses confident, professional brand voice — not generic corporate speak
+- Ends with a clear value proposition or CTA for business owners
+- Includes 3-5 industry hashtags
+
+Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  facebook: `You are a Facebook content creator for Optentia — an AI systems and automation operator for businesses.
+
+Write a discussion-driving Facebook post that:
+- Opens with a controversial or counterintuitive statement about AI or business
+- Develops the idea with specific examples (100-250 words)
+- Ends with a direct question that invites business owners to respond
+- Includes 3-5 relevant hashtags
+
+Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
+
+  youtube: `You are a YouTube content strategist for Optentia — an AI systems and automation operator for businesses.
+
+Write a YouTube video package that:
+- Creates a compelling, search-optimized title
+- Writes a hook for the first 30 seconds (what viewers will learn)
+- Writes an optimized video description (150-300 words) covering the topic with timestamps placeholder
+- Includes 10-15 SEO-optimized tags
+
+Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
 };
 
-const CONTENT_PILLARS = ["strong_opinion", "practical_education", "documentary", "direct_promotion"] as const;
+const CONTENT_PILLARS = [
+  "strong_opinion",
+  "practical_education",
+  "documentary",
+  "direct_promotion",
+] as const;
 
 // ─── Generate Content Handler ─────────────────────────────────────────────────
 
 export async function generateContentHandler(req: Request, res: Response) {
-  try {
-    const user = await sdk.authenticateRequest(req);
-    if (!user.isCron || !user.taskUid) {
-      return res.status(403).json({ error: "cron-only" });
-    }
+  if (!validateCronRequest(req)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
 
-    const schedule = await getScheduleByCronTaskUid(user.taskUid);
-    if (!schedule) {
-      return res.json({ ok: true, skipped: "orphan — no schedule found for this task uid" });
-    }
+  const dueSchedules = await getActiveSchedulesDue();
+  const totalGenerated: number[] = [];
 
-    if (!schedule.isActive) {
-      return res.json({ ok: true, skipped: "schedule is paused" });
-    }
-
+  for (const schedule of dueSchedules) {
     const platforms: string[] = JSON.parse(schedule.platforms || "[]");
     const pillars: string[] = schedule.contentPillars
       ? JSON.parse(schedule.contentPillars)
@@ -55,12 +124,12 @@ export async function generateContentHandler(req: Request, res: Response) {
 
     for (let i = 0; i < schedule.postsPerRun; i++) {
       const platform = platforms[i % platforms.length];
-      const pillar = pillars[i % pillars.length] as typeof CONTENT_PILLARS[number];
-      const systemPrompt = PLATFORM_PROMPTS[platform] || PLATFORM_PROMPTS.instagram;
+      const pillar = pillars[i % pillars.length] as (typeof CONTENT_PILLARS)[number];
+      const systemPrompt = PLATFORM_PROMPTS[platform] ?? PLATFORM_PROMPTS.instagram;
 
       const userMessage = schedule.generationPrompt
-        ? `${schedule.generationPrompt}\nPlatform: ${platform}\nContent pillar: ${pillar}`
-        : `Generate a ${pillar.replace("_", " ")} post for ${platform}. Brand: Optentia — AI systems and automation operator for businesses. Be strategic, direct, and intelligent.`;
+        ? `${schedule.generationPrompt}\nPlatform: ${platform}\nContent pillar: ${pillar.replace(/_/g, " ")}`
+        : `Generate a ${pillar.replace(/_/g, " ")} post for ${platform}. Brand: Optentia — AI systems and automation operator for businesses. Will Hershey is the founder. Be strategic, direct, and intelligent.`;
 
       try {
         const response = await invokeLLM({
@@ -68,38 +137,23 @@ export async function generateContentHandler(req: Request, res: Response) {
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage },
           ],
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "social_post",
-              strict: true,
-              schema: {
-                type: "object",
-                properties: {
-                  caption: { type: "string" },
-                  hashtags: { type: "string" },
-                  hook: { type: "string" },
-                  scriptText: { type: "string" },
-                },
-                required: ["caption", "hashtags", "hook"],
-                additionalProperties: false,
-              },
-            },
-          },
         });
 
         const rawContent = response.choices[0]?.message?.content;
-        const content = typeof rawContent === "string" ? rawContent : null;
-        if (!content) continue;
+        if (!rawContent) continue;
 
-        const parsed = JSON.parse(content);
+        let parsed: { caption: string; hashtags: string; hook: string; scriptText?: string };
+        try {
+          parsed = JSON.parse(rawContent);
+        } catch {
+          console.error(`[cron] Failed to parse AI response for ${platform}`);
+          continue;
+        }
 
-        // Generate image for visual platforms
         let imageUrl: string | undefined;
-        let imagePrompt: string | undefined;
         if (platform === "instagram" || platform === "facebook") {
           try {
-            imagePrompt = `Professional social media graphic for Optentia, a business automation company. Theme: "${parsed.hook?.substring(0, 80)}". Style: clean, modern, dark background with teal/cyan accent colors, minimalist design, bold typography, no people, no faces. High quality, 1:1 square format.`;
+            const imagePrompt = `Professional social media graphic for Optentia, a business AI automation company. Theme: "${parsed.hook?.substring(0, 80)}". Style: dark background with teal accent colors, minimalist, bold typography, no people or faces. Square 1:1 format.`;
             const imgResult = await generateImage({ prompt: imagePrompt });
             if (imgResult?.url) imageUrl = imgResult.url;
           } catch (imgErr) {
@@ -118,9 +172,7 @@ export async function generateContentHandler(req: Request, res: Response) {
           aiGenerated: true,
           generationPrompt: userMessage,
           imageUrl,
-          imagePrompt,
-          scheduleId: schedule.id,
-          contentType: platform === "youtube" ? "video" : (imageUrl ? "image" : "text"),
+          contentType: platform === "youtube" ? "video" : imageUrl ? "image" : "text",
         });
 
         if (post) generatedPosts.push(post.id);
@@ -129,110 +181,109 @@ export async function generateContentHandler(req: Request, res: Response) {
       }
     }
 
-    // Update schedule last run time
-    await updateContentSchedule(schedule.id, { lastRunAt: new Date() });
+    // Advance the schedule's run timestamps
+    let nextRunAt: Date | undefined;
+    try {
+      nextRunAt = computeNextRunAt(schedule.cron);
+    } catch {
+      console.error(`[cron] Invalid cron expression for schedule ${schedule.id}: ${schedule.cron}`);
+    }
+    await updateContentSchedule(schedule.id, {
+      lastRunAt: new Date(),
+      ...(nextRunAt ? { nextRunAt } : {}),
+    });
 
-    // Notify owner if posts were generated
     if (generatedPosts.length > 0) {
       await notifyOwner({
         title: `${generatedPosts.length} New Post${generatedPosts.length > 1 ? "s" : ""} Pending Approval`,
         content: `The "${schedule.name}" schedule generated ${generatedPosts.length} new post${generatedPosts.length > 1 ? "s" : ""} across ${platforms.join(", ")}. Review and approve them in your content queue.`,
       });
+      totalGenerated.push(...generatedPosts);
     }
-
-    return res.json({ ok: true, generated: generatedPosts.length, postIds: generatedPosts });
-  } catch (err) {
-    console.error("[cron] generateContent error:", err);
-    return res.status(500).json({
-      error: String(err),
-      timestamp: new Date().toISOString(),
-    });
   }
+
+  return res.json({
+    ok: true,
+    schedulesRun: dueSchedules.length,
+    generated: totalGenerated.length,
+    postIds: totalGenerated,
+  });
 }
 
 // ─── Publish Posts Handler ────────────────────────────────────────────────────
 
 export async function publishPostsHandler(req: Request, res: Response) {
-  try {
-    const user = await sdk.authenticateRequest(req);
-    if (!user.isCron || !user.taskUid) {
-      return res.status(403).json({ error: "cron-only" });
-    }
+  if (!validateCronRequest(req)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
 
-    const duePosts = await getScheduledPostsDue();
-    const published: number[] = [];
-    const failed: number[] = [];
+  const duePosts = await getScheduledPostsDue();
+  const published: number[] = [];
+  const failed: number[] = [];
 
-    for (const post of duePosts) {
-      try {
-        const result = await publishPostToPlatform(post);
+  for (const post of duePosts) {
+    try {
+      const result = await publishPostToPlatform(post);
 
-        if (result.success) {
-          await updateContentPost(post.id, {
-            status: "published",
-            publishedAt: new Date(),
-            externalPostId: result.externalPostId,
-            publishError: null,
-          });
+      if (result.success) {
+        await updateContentPost(post.id, {
+          status: "published",
+          publishedAt: new Date(),
+          externalPostId: result.externalPostId,
+          publishError: null,
+        });
 
-          await recordAnalyticsEvent({
-            postId: post.id,
-            platform: post.platform,
-            eventType: "published",
-          });
+        await recordAnalyticsEvent({
+          postId: post.id,
+          platform: post.platform,
+          eventType: "published",
+        });
 
-          published.push(post.id);
+        published.push(post.id);
 
-          await notifyOwner({
-            title: `✓ Post Published: ${post.platform}`,
-            content: `Your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}..." has been published successfully.${result.externalPostId ? ` Post ID: ${result.externalPostId}` : ""}`,
-          });
-        } else {
-          await updateContentPost(post.id, {
-            status: "failed",
-            publishError: result.error,
-          });
-
-          await recordAnalyticsEvent({
-            postId: post.id,
-            platform: post.platform,
-            eventType: "failed",
-          });
-
-          failed.push(post.id);
-
-          await notifyOwner({
-            title: `✗ Publish Failed: ${post.platform}`,
-            content: `Failed to publish your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}...". Error: ${result.error}`,
-          });
-        }
-      } catch (err) {
-        console.error(`[cron] Failed to publish post ${post.id}:`, err);
-        await updateContentPost(post.id, { status: "failed", publishError: String(err) });
-        await recordAnalyticsEvent({ postId: post.id, platform: post.platform, eventType: "failed" });
-        failed.push(post.id);
-      }
-    }
-
-    // Check platform connection health and notify on errors
-    const connections = await getPlatformConnections();
-    for (const conn of connections) {
-      if (conn.status === "error") {
         await notifyOwner({
-          title: `⚠ Platform Connection Issue: ${conn.platform}`,
-          content: `The ${conn.platform} connection is reporting an error: ${conn.errorMessage || "Unknown error"}. Please check your credentials in Platform Settings.`,
+          title: `Post Published: ${post.platform}`,
+          content: `Your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}..." has been published successfully.${result.externalPostId ? ` Post ID: ${result.externalPostId}` : ""}`,
+        });
+      } else {
+        await updateContentPost(post.id, {
+          status: "failed",
+          publishError: result.error,
+        });
+
+        await recordAnalyticsEvent({
+          postId: post.id,
+          platform: post.platform,
+          eventType: "failed",
+        });
+
+        failed.push(post.id);
+
+        await notifyOwner({
+          title: `Publish Failed: ${post.platform}`,
+          content: `Failed to publish your ${post.platform} post "${post.title || post.caption?.substring(0, 60)}...". Error: ${result.error}`,
         });
       }
+    } catch (err) {
+      console.error(`[cron] Failed to publish post ${post.id}:`, err);
+      await updateContentPost(post.id, { status: "failed", publishError: String(err) });
+      await recordAnalyticsEvent({ postId: post.id, platform: post.platform, eventType: "failed" });
+      failed.push(post.id);
     }
-
-    return res.json({ ok: true, published: published.length, failed: failed.length });
-  } catch (err) {
-    console.error("[cron] publishPosts error:", err);
-    return res.status(500).json({
-      error: String(err),
-      timestamp: new Date().toISOString(),
-    });
   }
+
+  // Alert on broken platform connections
+  const connections = await getPlatformConnections();
+  for (const conn of connections) {
+    if (conn.status === "error") {
+      await notifyOwner({
+        title: `Platform Connection Issue: ${conn.platform}`,
+        content: `The ${conn.platform} connection is reporting an error: ${conn.errorMessage || "Unknown error"}. Check your credentials in Platform Settings.`,
+      });
+    }
+  }
+
+  return res.json({ ok: true, published: published.length, failed: failed.length });
 }
 
 // ─── Platform Dispatcher ──────────────────────────────────────────────────────
@@ -248,10 +299,10 @@ async function publishPostToPlatform(post: {
 }): Promise<{ success: boolean; externalPostId?: string; error?: string }> {
   const conn = await getPlatformConnection(post.platform);
 
-  if (!conn || !conn.accessToken) {
+  if (!conn?.accessToken) {
     return {
       success: false,
-      error: `No credentials configured for ${post.platform}. Please add your API credentials in Platform Settings.`,
+      error: `No credentials configured for ${post.platform}. Add them in Platform Settings.`,
     };
   }
 
@@ -288,7 +339,10 @@ async function publishPostToPlatform(post: {
     case "linkedin_personal":
     case "linkedin_company": {
       if (!conn.accountId) {
-        return { success: false, error: `LinkedIn ${post.platform === "linkedin_company" ? "Organization" : "Person"} URN not configured.` };
+        return {
+          success: false,
+          error: `LinkedIn ${post.platform === "linkedin_company" ? "Organization" : "Person"} URN not configured.`,
+        };
       }
       return publishToLinkedIn({
         accessToken: conn.accessToken,
@@ -300,10 +354,9 @@ async function publishPostToPlatform(post: {
     }
 
     case "youtube": {
-      const refreshToken = conn.refreshToken ?? undefined;
       return publishYouTubeCommunityPost({
         accessToken: conn.accessToken,
-        refreshToken,
+        refreshToken: conn.refreshToken ?? undefined,
         text: post.title ? `${post.title}\n\n${caption}` : caption,
         hashtags,
         imageUrl: post.imageUrl ?? undefined,
