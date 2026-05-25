@@ -714,4 +714,102 @@ export const postsRouter = router({
 
       return results;
     }),
+  // ─── 4-step wizard: topic → caption → visual concept → image → publish ─
+
+  /** Step 1: Topic → 3 caption ideas in different tones. LLM-only, cheap. */
+  generateCaptionIdeas: protectedProcedure
+    .input(z.object({
+      topic: z.string().min(1),
+      platform: PLATFORM_ENUM.optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const platform = input.platform ?? "instagram";
+      const platformBrief = PLATFORM_PROMPTS[platform] ?? PLATFORM_PROMPTS.instagram;
+      const prompt = `Generate 3 distinct caption ideas for a social media post about: "${input.topic}".
+
+Each caption must have a DIFFERENT angle:
+1. "Bold hook" — provocative one-line opener that stops scroll
+2. "Practical teach" — concrete how-to / framework / numbered insight
+3. "Story" — short personal narrative or client example
+
+Platform context:
+${platformBrief}
+
+Return ONLY valid JSON in this exact shape (no preamble, no markdown fence):
+{
+  "ideas": [
+    { "tone": "Bold hook", "caption": "...", "hashtags": "#tag1 #tag2 #tag3" },
+    { "tone": "Practical teach", "caption": "...", "hashtags": "#tag1 #tag2 #tag3" },
+    { "tone": "Story", "caption": "...", "hashtags": "#tag1 #tag2 #tag3" }
+  ]
+}`;
+      const raw = await invokeLLM({ prompt, maxTokens: 2000 });
+      const cleaned = raw.replace(/^\`\`\`json\s*/i, "").replace(/\`\`\`\s*$/i, "").trim();
+      let parsed: { ideas: Array<{ tone: string; caption: string; hashtags: string }> };
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "LLM returned invalid JSON for caption ideas" });
+      }
+      return { ideas: parsed.ideas.map((idea, i) => ({ id: `c${i}`, ...idea })) };
+    }),
+
+  /** Step 2: Caption → 3 text-only visual concept descriptions. No image gen yet. */
+  generateVisualConcepts: protectedProcedure
+    .input(z.object({
+      caption: z.string().min(1),
+      platform: PLATFORM_ENUM.optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const hook = extractHook(input.caption);
+      const prompt = `For this social media caption, design 3 DIFFERENT visual concepts that would each work as a stop-the-scroll graphic.
+
+Caption: "${input.caption}"
+Key hook (8-14 words): "${hook}"
+
+Each concept must use a DIFFERENT visual style:
+1. "Bold Typography" — high-contrast quote-graphic with the hook in large weight
+2. "Editorial Illustration" — minimal flat illustration with a clear metaphor
+3. "Documentary Photo" — composed photo (no text overlay) that evokes the message
+
+For each concept return: styleName, description (1-2 sentences), colors (3 hex codes for background/primary/accent), imagePrompt (detailed AI-image-gen prompt at 1024x1024 — be specific about layout, typography weight, composition, mood).
+
+Return ONLY valid JSON (no preamble, no markdown fence):
+{
+  "concepts": [
+    { "styleName": "Bold Typography", "description": "...", "colors": ["#0D1B2A", "#FFFFFF", "#FF3D9A"], "imagePrompt": "..." },
+    { "styleName": "Editorial Illustration", "description": "...", "colors": ["...", "...", "..."], "imagePrompt": "..." },
+    { "styleName": "Documentary Photo", "description": "...", "colors": ["...", "...", "..."], "imagePrompt": "..." }
+  ]
+}`;
+      const raw = await invokeLLM({ prompt, maxTokens: 2500 });
+      const cleaned = raw.replace(/^\`\`\`json\s*/i, "").replace(/\`\`\`\s*$/i, "").trim();
+      let parsed: { concepts: Array<{ styleName: string; description: string; colors: string[]; imagePrompt: string }> };
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "LLM returned invalid JSON for visual concepts" });
+      }
+      return { concepts: parsed.concepts.map((c, i) => ({ id: `v${i}`, ...c })) };
+    }),
+
+  /** Step 3: Generate ONE image from a chosen concept's imagePrompt. Costs ~$0.04. */
+  generateImageFromConcept: protectedProcedure
+    .input(z.object({
+      imagePrompt: z.string().min(1),
+      size: z.enum(["1024x1024", "1792x1024", "1024x1792"]).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        const result = await generateImage({ prompt: input.imagePrompt, size: (input.size ?? "1024x1024") as DalleSize });
+        if (!result.url) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Image generation returned no URL" });
+        }
+        return { url: result.url };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Image generation failed: ${msg}` });
+      }
+    }),
+
 });
