@@ -63,7 +63,35 @@ export async function publishToInstagram(params: {
       };
     }
 
-    // Step 2: Publish the container
+// Wait for the container to be ready before publishing.
+      // Instagram needs time to download and process the image; if we publish too
+      // early we get "Media ID is not available".
+      {
+        const maxAttempts = 15;
+        const delayMs = 2000;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          await new Promise((r) => setTimeout(r, delayMs));
+          const statusRes = await fetch(
+            `${baseUrl}/${containerData.id}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`,
+          );
+          const statusData = (await statusRes.json()) as { status_code?: string; error?: { message: string } };
+          if (statusData.status_code === "FINISHED") break;
+          if (statusData.status_code === "ERROR" || statusData.status_code === "EXPIRED") {
+            return {
+              success: false,
+              error: `Instagram failed to process the image (status: ${statusData.status_code}).`,
+            };
+          }
+          if (attempt === maxAttempts - 1) {
+            return {
+              success: false,
+              error: "Instagram took too long to process the image. Try again with a smaller image.",
+            };
+          }
+        }
+      }
+
+          // Step 2: Publish the container
     const publishRes = await fetch(`${baseUrl}/${accountId}/media_publish`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
