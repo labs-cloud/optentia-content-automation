@@ -21,6 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
+import { SignIn } from "@clerk/clerk-react";
 import {
   BarChart3,
   CalendarDays,
@@ -74,9 +75,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (loading) return <DashboardLayoutSkeleton />;
 
   if (!user) {
-    // Redirect to the email/password login page
-    window.location.replace("/login");
-    return <DashboardLayoutSkeleton />;
+    // Not signed in — render Clerk's hosted SignIn UI inline.
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <SignIn routing="hash" signUpUrl="#/sign-up" />
+      </div>
+    );
   }
 
   return (
