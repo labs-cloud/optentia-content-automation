@@ -85,7 +85,7 @@ export async function publishToInstagram(params: {
           if (attempt === maxAttempts - 1) {
             return {
               success: false,
-              error: "Instagram took too long to process the image. Try again with a smaller image.",
+              error: `Instagram took too long to process the image (last status: ${statusData.status_code ?? `HTTP ${statusRes.status}: ${JSON.stringify(statusData).slice(0, 200)}`}).`,
             };
           }
         }
