@@ -1,17 +1,4 @@
-import { useRef, useState } from "react";
-import {
-  Zap,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  Image as ImageIcon,
-  Upload,
-  Sparkles,
-  X,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
-import { toast } from "sonner";
+import { useState, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,476 +8,438 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import {
+  Zap,
+  Sparkles,
+  ChevronLeft,
+  RefreshCw,
+  Image as ImageIcon,
+  Check,
+  Loader2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { PLATFORM_CONFIG } from "@/lib/platformUtils";
 import { trpc } from "@/lib/trpc";
 
-type PlatformKey =
-  | "instagram"
-  | "linkedin"
-  | "linkedin_personal"
-  | "linkedin_company"
-  | "facebook"
-  | "youtube";
+type PlatformKey = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
 
-type PublishResult = {
-  platform: string;
-  success: boolean;
-  postId?: number;
-  externalPostId?: string;
-  imageUrl?: string;
-  error?: string;
-};
-
-const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4 MB — Vercel serverless body limit
-
-interface Props {
-  trigger?: React.ReactNode;
+interface CaptionIdea {
+  tone: string;
+  caption: string;
+  hashtags: string;
 }
 
-/**
- * One-shot composer: caption → publish.
- * By default the server auto-generates a platform-specific viral graphic for
- * each selected platform. Power users can open the "Advanced" section to
- * upload their own image (one image, used for all platforms).
- */
+interface VisualConcept {
+  id: string;
+  styleName: string;
+  description: string;
+  colors: string[];
+  imagePrompt: string;
+}
+
+type Step = "topic" | "caption" | "concept" | "preview" | "publish";
+
+interface Props {
+  trigger?: ReactNode;
+}
+
+const PLATFORM_KEYS: PlatformKey[] = [
+  "instagram",
+  "linkedin_personal",
+  "linkedin_company",
+  "facebook",
+  "youtube",
+];
+
 export function InstantPostDialog({ trigger }: Props) {
   const [open, setOpen] = useState(false);
-  const [caption, setCaption] = useState("");
-  const [hashtags, setHashtags] = useState("");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [imagePreviewSrc, setImagePreviewSrc] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>("topic");
+
+  // Step 1: topic
+  const [topic, setTopic] = useState("");
+
+  // Step 2: caption ideas + chosen
+  const [captionIdeas, setCaptionIdeas] = useState<CaptionIdea[]>([]);
+  const [chosenCaption, setChosenCaption] = useState<CaptionIdea | null>(null);
+
+  // Step 3: visual concepts + chosen
+  const [visualConcepts, setVisualConcepts] = useState<VisualConcept[]>([]);
+  const [chosenConcept, setChosenConcept] = useState<VisualConcept | null>(null);
+
+  // Step 4: preview image
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Step 5: platforms
   const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
-    instagram: false,
-    linkedin: false,
+    instagram: true,
     linkedin_personal: false,
     linkedin_company: false,
     facebook: false,
     youtube: false,
   });
-  const [results, setResults] = useState<PublishResult[] | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const { data: platforms } = trpc.platforms.list.useQuery();
   const utils = trpc.useUtils();
 
-  const uploadImage = trpc.posts.uploadImage.useMutation({
-    onSuccess: ({ url }) => {
-      setImageUrl(url);
-      toast.success("Image uploaded — will be used for all selected platforms");
-    },
-    onError: (err) => {
-      toast.error(err.message || "Upload failed");
-      setImagePreviewSrc(null);
-    },
-  });
-
-  const generateImageMut = trpc.posts.generateImageForCaption.useMutation({
-    onSuccess: ({ url }) => {
-      setImageUrl(url);
-      setImagePreviewSrc(url);
-      toast.success("Image generated");
-    },
-    onError: (err) => {
-      toast.error(err.message || "Image generation failed");
-    },
-  });
-
-  const quickPublish = trpc.posts.quickPublish.useMutation({
+  const generateCaptionsMut = trpc.posts.generateCaptionIdeas.useMutation({
     onSuccess: (data) => {
-      setResults(data);
-      utils.analytics.summary.invalidate();
-      utils.analytics.byPlatform.invalidate();
-      utils.analytics.recentPosts.invalidate();
-      utils.posts.pendingApproval.invalidate();
-      const failures = data.filter((r) => !r.success);
-      if (failures.length === 0) {
-        toast.success(
-          `Published to ${data.length} platform${data.length === 1 ? "" : "s"}`,
-        );
-      } else if (failures.length === data.length) {
-        toast.error("All platforms failed — see details below");
-      } else {
-        toast.warning(
-          `${data.length - failures.length}/${data.length} published, ${failures.length} failed`,
+      setCaptionIdeas(data.ideas ?? []);
+      setStep("caption");
+    },
+    onError: (e) => toast.error(`Couldn't generate caption ideas: ${e.message}`),
+  });
+
+  const generateConceptsMut = trpc.posts.generateVisualConcepts.useMutation({
+    onSuccess: (data) => {
+      setVisualConcepts(data.concepts ?? []);
+      setStep("concept");
+    },
+    onError: (e) => toast.error(`Couldn't generate visual concepts: ${e.message}`),
+  });
+
+  const generateImageMut = trpc.posts.generateImageFromConcept.useMutation({
+    onSuccess: (data) => {
+      setPreviewUrl(data.url);
+      setStep("preview");
+    },
+    onError: (e) => toast.error(`Image generation failed: ${e.message}`),
+  });
+
+  const quickPublishMut = trpc.posts.quickPublish.useMutation({
+    onSuccess: (data) => {
+      const succeeded = (data.results ?? []).filter((r: { success: boolean }) => r.success);
+      const failed = (data.results ?? []).filter((r: { success: boolean }) => !r.success);
+      if (succeeded.length > 0) {
+        toast.success(`Published to ${succeeded.length} platform${succeeded.length > 1 ? "s" : ""}`);
+      }
+      if (failed.length > 0) {
+        toast.error(
+          `Failed on ${failed.length}: ${failed
+            .map((f: { platform: string; error?: string }) => `${f.platform} (${f.error ?? "unknown"})`)
+            .join(", ")}`,
         );
       }
+      void utils.posts.list.invalidate();
+      if (failed.length === 0) {
+        resetAndClose();
+      }
     },
-    onError: (err) => {
-      toast.error(err.message || "Publish failed");
-    },
+    onError: (e) => toast.error(`Publish failed: ${e.message}`),
   });
 
-  const connectedSet = new Set(
-    (platforms ?? []).filter((p) => p.status === "connected").map((p) => p.platform),
-  );
-
-  // Show all six possible targets in stable order; disable un-connected ones.
-  // Instagram is NOT disabled when no image is attached — server auto-generates.
-  const allTargets: PlatformKey[] = [
-    "instagram",
-    "linkedin_personal",
-    "linkedin_company",
-    "facebook",
-    "youtube",
-    "linkedin",
-  ];
-
-  const platformOptions = allTargets.map((platform) => {
-    const connected = connectedSet.has(platform);
-    return {
-      platform,
-      connected,
-      disabled: !connected,
-      disabledReason: !connected ? "Not set" : null,
-      label:
-        PLATFORM_CONFIG[platform as keyof typeof PLATFORM_CONFIG]?.label ??
-        platform,
-      icon: PLATFORM_CONFIG[platform as keyof typeof PLATFORM_CONFIG]?.icon ?? "•",
-    };
-  });
-
-  const selectedList = (Object.entries(selected) as Array<[PlatformKey, boolean]>)
-    .filter(([, on]) => on)
-    .map(([k]) => k);
-  const effectiveSelected = selectedList.filter((p) => {
-    const opt = platformOptions.find((o) => o.platform === p);
-    return opt && !opt.disabled;
-  });
+  function resetAndClose() {
+    setOpen(false);
+    setTimeout(() => {
+      setStep("topic");
+      setTopic("");
+      setCaptionIdeas([]);
+      setChosenCaption(null);
+      setVisualConcepts([]);
+      setChosenConcept(null);
+      setPreviewUrl(null);
+    }, 200);
+  }
 
   const busy =
-    quickPublish.isPending ||
-    uploadImage.isPending ||
-    generateImageMut.isPending;
+    generateCaptionsMut.isPending ||
+    generateConceptsMut.isPending ||
+    generateImageMut.isPending ||
+    quickPublishMut.isPending;
 
-  const canSubmit =
-    caption.trim().length > 0 &&
-    effectiveSelected.length > 0 &&
-    !busy;
+  function handleGenerateCaptions() {
+    if (!topic.trim()) {
+      toast.error("Add a topic first");
+      return;
+    }
+    generateCaptionsMut.mutate({ topic: topic.trim() });
+  }
 
-  function reset() {
-    setCaption("");
-    setHashtags("");
-    setImageUrl(null);
-    setImagePreviewSrc(null);
-    setAdvancedOpen(false);
-    setSelected({
-      instagram: false,
-      linkedin: false,
-      linkedin_personal: false,
-      linkedin_company: false,
-      facebook: false,
-      youtube: false,
+  function handlePickCaption(idea: CaptionIdea) {
+    setChosenCaption(idea);
+    generateConceptsMut.mutate({ caption: idea.caption });
+  }
+
+  function handlePickConcept(concept: VisualConcept) {
+    setChosenConcept(concept);
+    generateImageMut.mutate({ imagePrompt: concept.imagePrompt, size: "1024x1024" });
+  }
+
+  function handleRegeneratePreview() {
+    if (!chosenConcept) return;
+    setPreviewUrl(null);
+    generateImageMut.mutate({ imagePrompt: chosenConcept.imagePrompt, size: "1024x1024" });
+  }
+
+  function handleAcceptPreview() {
+    setStep("publish");
+  }
+
+  function handlePublish() {
+    if (!chosenCaption || !previewUrl) return;
+    const platforms = PLATFORM_KEYS.filter((p) => selected[p]);
+    if (platforms.length === 0) {
+      toast.error("Pick at least one platform");
+      return;
+    }
+    quickPublishMut.mutate({
+      caption: chosenCaption.caption,
+      hashtags: chosenCaption.hashtags,
+      imageUrl: previewUrl,
+      platforms,
     });
-    setResults(null);
-    quickPublish.reset();
-    uploadImage.reset();
-    generateImageMut.reset();
   }
 
-  function handleSubmit() {
-    if (!canSubmit) return;
-    setResults(null);
-    quickPublish.mutate({
-      caption: caption.trim(),
-      hashtags: hashtags.trim() || undefined,
-      imageUrl: imageUrl ?? undefined,
-      platforms: effectiveSelected,
-    });
+  function goBack() {
+    if (step === "caption") setStep("topic");
+    else if (step === "concept") setStep("caption");
+    else if (step === "preview") setStep("concept");
+    else if (step === "publish") setStep("preview");
   }
 
-  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please choose an image file");
-      return;
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      toast.error(
-        `Image is ${Math.round(file.size / 1024 / 1024)}MB — max ${MAX_UPLOAD_BYTES / 1024 / 1024}MB`,
-      );
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setImagePreviewSrc(dataUrl);
-      const base64 = dataUrl.split(",")[1] ?? "";
-      uploadImage.mutate({ dataBase64: base64, mimeType: file.type });
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function handleGeneratePreview() {
-    if (!caption.trim()) {
-      toast.error("Type a caption first so the AI knows what to draw");
-      return;
-    }
-    generateImageMut.mutate({ caption: caption.trim() });
-  }
-
-  function clearImage() {
-    setImageUrl(null);
-    setImagePreviewSrc(null);
-    uploadImage.reset();
-    generateImageMut.reset();
-  }
+  const stepNumber = { topic: 1, caption: 2, concept: 3, preview: 4, publish: 5 }[step];
 
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) reset();
+      onOpenChange={(o) => {
+        if (!o) resetAndClose();
+        else setOpen(true);
       }}
     >
       <DialogTrigger asChild>
         {trigger ?? (
           <Button size="sm" variant="secondary" className="gap-2">
-            <Zap className="h-4 w-4" />
+            <Zap className="size-4" />
             Instant Post
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-primary" />
+            <Zap className="size-5 text-primary" />
             Instant Post
+            <span className="ml-auto text-xs font-normal text-muted-foreground">
+              Step {stepNumber} of 5
+            </span>
           </DialogTitle>
           <DialogDescription>
-            Caption + pick platforms. The server generates a viral hook-graphic in the right format for each platform and publishes immediately.
+            {step === "topic" && "What's the post about?"}
+            {step === "caption" && "Pick a caption angle."}
+            {step === "concept" && "Pick a visual concept."}
+            {step === "preview" && "Preview the image. Regenerate or accept."}
+            {step === "publish" && "Pick platforms and publish."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="instant-caption">Caption</Label>
+        {step === "topic" && (
+          <div className="space-y-3">
+            <Label htmlFor="topic">Topic or angle</Label>
             <Textarea
-              id="instant-caption"
-              placeholder="What do you want to say?"
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              rows={5}
-              disabled={busy}
+              id="topic"
+              placeholder="e.g. how AI agents handle the messy middle of running a business"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              rows={3}
+              className="resize-none"
             />
+            <p className="text-xs text-muted-foreground">
+              Optentia will generate 3 caption angles from this. Refine after.
+            </p>
           </div>
+        )}
 
-          <div className="space-y-2">
-            <Label htmlFor="instant-hashtags">
-              Hashtags <span className="text-muted-foreground text-xs">(optional)</span>
-            </Label>
-            <Input
-              id="instant-hashtags"
-              placeholder="#ai #automation #optentia"
-              value={hashtags}
-              onChange={(e) => setHashtags(e.target.value)}
-              disabled={busy}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Platforms</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {platformOptions.map(({ platform, disabled, disabledReason, label, icon }) => (
-                <label
-                  key={platform}
-                  className={`flex items-center gap-2 rounded-md border border-border/50 px-3 py-2 text-sm ${
-                    disabled || busy
-                      ? "opacity-50 cursor-not-allowed"
-                      : "cursor-pointer hover:bg-accent/40"
-                  }`}
-                >
-                  <Checkbox
-                    checked={selected[platform]}
-                    disabled={disabled || busy}
-                    onCheckedChange={(v) =>
-                      setSelected((s) => ({ ...s, [platform]: !!v }))
-                    }
-                  />
-                  <span className="text-base leading-none">{icon}</span>
-                  <span className="flex-1 truncate">{label}</span>
-                  {disabledReason && (
-                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {disabledReason}
-                    </span>
-                  )}
-                </label>
-              ))}
-            </div>
-            {!imageUrl && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1 pt-1">
-                <Sparkles className="h-3 w-3 text-primary" />
-                AI will auto-generate a hook-graphic in the right format for each platform.
-              </p>
-            )}
-            {imageUrl && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1 pt-1">
-                <ImageIcon className="h-3 w-3 text-primary" />
-                Your image (below) will be used for all selected platforms.
-              </p>
-            )}
-          </div>
-
-          {/* Advanced: bring your own image */}
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setAdvancedOpen((v) => !v)}
-              disabled={busy}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {advancedOpen ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-              Advanced — use my own image
-            </button>
-
-            {advancedOpen && (
-              <div className="space-y-2 pl-4 border-l border-border/50">
-                {imagePreviewSrc ? (
-                  <div className="relative rounded-md border border-border/50 overflow-hidden bg-muted/20">
-                    <img
-                      src={imagePreviewSrc}
-                      alt="Attached"
-                      className="w-full max-h-60 object-contain"
-                    />
-                    <button
-                      type="button"
-                      onClick={clearImage}
-                      disabled={busy}
-                      className="absolute top-2 right-2 h-7 w-7 rounded-full bg-background/90 backdrop-blur flex items-center justify-center hover:bg-background border border-border/50 disabled:opacity-50"
-                      aria-label="Remove image"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                    {uploadImage.isPending && (
-                      <div className="absolute inset-0 bg-background/70 flex items-center justify-center text-xs gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Uploading…
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 gap-2"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={busy}
-                      >
-                        <Upload className="h-4 w-4" />
-                        Upload
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="flex-1 gap-2"
-                        onClick={handleGeneratePreview}
-                        disabled={busy || !caption.trim()}
-                      >
-                        {generateImageMut.isPending ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Generating…
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="h-4 w-4" />
-                            Preview image
-                          </>
-                        )}
-                      </Button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFilePick}
-                        className="hidden"
-                      />
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      If you attach an image here it overrides auto-generation and the same image is used for all selected platforms.
-                    </p>
-                  </>
+        {step === "caption" && (
+          <div className="space-y-3">
+            {captionIdeas.map((idea, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => handlePickCaption(idea)}
+                disabled={busy}
+                className="w-full text-left rounded-lg border border-border bg-card hover:border-primary/60 hover:bg-accent/30 transition p-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-primary">
+                    {idea.tone}
+                  </span>
+                </div>
+                <p className="text-sm leading-snug whitespace-pre-wrap line-clamp-6">
+                  {idea.caption}
+                </p>
+                {idea.hashtags && (
+                  <p className="text-xs text-muted-foreground mt-2 line-clamp-1">
+                    {idea.hashtags}
+                  </p>
                 )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {step === "concept" && (
+          <div className="space-y-3">
+            {visualConcepts.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => handlePickConcept(c)}
+                disabled={busy}
+                className="w-full text-left rounded-lg border border-border bg-card hover:border-primary/60 hover:bg-accent/30 transition p-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex gap-1">
+                    {c.colors.slice(0, 3).map((hex, idx) => (
+                      <span
+                        key={idx}
+                        className="size-5 rounded border border-border/40"
+                        style={{ backgroundColor: hex }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm font-semibold">{c.styleName}</span>
+                </div>
+                <p className="text-sm text-muted-foreground leading-snug">{c.description}</p>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {step === "preview" && (
+          <div className="space-y-3">
+            {previewUrl ? (
+              <div className="rounded-lg overflow-hidden border border-border bg-muted/30">
+                <img
+                  src={previewUrl}
+                  alt="Generated preview"
+                  className="w-full h-auto object-cover"
+                />
+              </div>
+            ) : (
+              <div className="aspect-square rounded-lg bg-muted/30 flex items-center justify-center">
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
               </div>
             )}
-          </div>
-
-          {results && results.length > 0 && (
-            <div className="space-y-1.5 rounded-md border border-border/50 bg-muted/20 p-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                Results
+            {chosenConcept && (
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium">{chosenConcept.styleName}</span> ·{" "}
+                {chosenConcept.description}
               </p>
-              {results.map((r) => {
-                const label =
-                  PLATFORM_CONFIG[r.platform as keyof typeof PLATFORM_CONFIG]
-                    ?.label ?? r.platform;
-                return (
-                  <div
-                    key={r.platform}
-                    className="flex items-start gap-2 text-sm"
-                  >
-                    {r.success ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium">{label}</p>
-                      {r.success ? (
-                        <p className="text-xs text-muted-foreground">
-                          Published
-                          {r.externalPostId ? ` · ${r.externalPostId}` : ""}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-destructive break-words">
-                          {r.error ?? "Unknown error"}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRegeneratePreview}
+                disabled={busy || !chosenConcept}
+                className="gap-2"
+              >
+                <RefreshCw className="size-4" />
+                Regenerate
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleAcceptPreview}
+                disabled={busy || !previewUrl}
+                className="gap-2 ml-auto"
+              >
+                <Check className="size-4" />
+                Use this image
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "publish" && (
+          <div className="space-y-4">
+            {previewUrl && (
+              <div className="rounded-lg overflow-hidden border border-border bg-muted/30">
+                <img src={previewUrl} alt="Final" className="w-full h-auto max-h-48 object-cover" />
+              </div>
+            )}
+            {chosenCaption && (
+              <div className="rounded-md bg-muted/30 p-3 max-h-32 overflow-y-auto">
+                <p className="text-xs whitespace-pre-wrap leading-snug">{chosenCaption.caption}</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Platforms</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {PLATFORM_KEYS.map((p) => {
+                  const cfg = PLATFORM_CONFIG[p];
+                  if (!cfg) return null;
+                  return (
+                    <label
+                      key={p}
+                      className="flex items-center gap-2 rounded-md border border-border bg-card p-2 cursor-pointer hover:bg-accent/30"
+                    >
+                      <Checkbox
+                        checked={selected[p]}
+                        onCheckedChange={(v) =>
+                          setSelected((s) => ({ ...s, [p]: Boolean(v) }))
+                        }
+                      />
+                      <span className="text-sm">
+                        {cfg.emoji} {cfg.label}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          {step !== "topic" && (
+            <Button variant="ghost" onClick={goBack} disabled={busy} className="gap-2">
+              <ChevronLeft className="size-4" />
+              Back
+            </Button>
+          )}
+          {step === "topic" && (
+            <Button
+              onClick={handleGenerateCaptions}
+              disabled={busy || !topic.trim()}
+              className="gap-2 ml-auto"
+            >
+              {generateCaptionsMut.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              Generate caption ideas
+            </Button>
+          )}
+          {step === "caption" && generateConceptsMut.isPending && (
+            <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Generating visual concepts…
             </div>
           )}
-        </div>
-
-        <DialogFooter className="gap-2">
-          <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
-            Close
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            className="gap-2 glow-primary"
-          >
-            {quickPublish.isPending ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Publishing…
-              </>
-            ) : (
-              <>
-                <Zap className="h-4 w-4" />
-                Publish now
-              </>
-            )}
-          </Button>
+          {step === "concept" && generateImageMut.isPending && (
+            <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Generating image…
+            </div>
+          )}
+          {step === "publish" && (
+            <Button
+              onClick={handlePublish}
+              disabled={busy || !previewUrl || !chosenCaption}
+              className="gap-2 ml-auto"
+            >
+              {quickPublishMut.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ImageIcon className="size-4" />
+              )}
+              Publish now
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
