@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InstantPostDialog } from "@/components/InstantPostDialog";
 import {
   BarChart3,
   CalendarDays,
@@ -84,6 +85,7 @@ export default function Dashboard() {
               </Badge>
             )}
           </Button>
+          <InstantPostDialog />
           <Button size="sm" onClick={() => setLocation("/generate")} className="gap-2 glow-primary">
             <Sparkles className="h-4 w-4" />
             Generate Content
