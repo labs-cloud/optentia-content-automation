@@ -420,15 +420,73 @@ export const postsRouter = router({
     }),
 
   /**
-   * Instant post: create + publish a free-form caption to one or more
-   * platforms in a single request, no review queue, no schedule.
-   *
-   * Returns a per-platform result so the UI can show which ones landed.
+   * Upload a user-supplied image (base64) to R2 storage and return a
+   * `/manus-storage/...` URL that the publishers and Instant Post composer
+   * can use as `imageUrl`.
+   */
+  uploadImage: protectedProcedure
+    .input(z.object({
+      dataBase64: z.string().min(1),
+      mimeType: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const { storagePut } = await import("../storage");
+      const mt = input.mimeType.toLowerCase();
+      const ext = mt.includes("png")
+        ? "png"
+        : mt.includes("jpeg") || mt.includes("jpg")
+          ? "jpg"
+          : mt.includes("gif")
+            ? "gif"
+            : mt.includes("webp")
+              ? "webp"
+              : "bin";
+      const key = `uploads/${Date.now()}.${ext}`;
+      const buffer = Buffer.from(input.dataBase64, "base64");
+      const { url } = await storagePut(key, buffer, input.mimeType);
+      return { url };
+    }),
+
+  /**
+   * AI-generate an image for the Instant Post composer. Uses the same DALL-E
+   * pipeline as the AI Generator, but accepts an arbitrary prompt or a caption
+   * to derive a prompt from.
+   */
+  generateImageForCaption: protectedProcedure
+    .input(z.object({
+      caption: z.string().min(1),
+      platform: PLATFORM_ENUM.optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const promptPlatformLabel =
+        input.platform === "linkedin" ||
+        input.platform === "linkedin_personal" ||
+        input.platform === "linkedin_company"
+          ? "LinkedIn"
+          : input.platform === "facebook"
+            ? "Facebook"
+            : input.platform === "youtube"
+              ? "YouTube"
+              : "Instagram";
+      const prompt = `Professional social media graphic for Optentia, an AI systems and automation operator for businesses. Theme: "${input.caption.substring(0, 200)}". Style: clean, modern, dark background with teal/cyan accent colors, minimalist design, bold typography, no people, no faces. Suitable for ${promptPlatformLabel}. High quality, 1:1 square format.`;
+      const result = await generateImage({ prompt });
+      if (!result.url) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Image generation failed" });
+      }
+      return { url: result.url, prompt };
+    }),
+
+  /**
+   * Instant post: create + publish a free-form caption (with optional image)
+   * to one or more platforms in a single request. No review queue, no
+   * schedule. Returns a per-platform result so the UI can show which ones
+   * landed.
    */
   quickPublish: protectedProcedure
     .input(z.object({
       caption: z.string().min(1),
       hashtags: z.string().optional(),
+      imageUrl: z.string().optional(),
       platforms: z.array(PLATFORM_ENUM).min(1),
     }))
     .mutation(async ({ input }) => {
@@ -445,9 +503,22 @@ export const postsRouter = router({
         error?: string;
       }> = [];
 
+      const hasImage = Boolean(input.imageUrl && input.imageUrl.length > 0);
+
       for (const platform of input.platforms) {
         let postId: number | undefined;
         try {
+          // Instagram strictly requires media — fail fast with a clear message
+          // so the dialog renders the right error before we even touch the API.
+          if (platform === "instagram" && !hasImage) {
+            results.push({
+              platform,
+              success: false,
+              error: "Instagram requires an image. Attach or generate one before publishing.",
+            });
+            continue;
+          }
+
           const conn = await getPlatformConnection(platform);
           if (!conn?.accessToken) {
             results.push({
@@ -462,9 +533,10 @@ export const postsRouter = router({
             caption: input.caption,
             hashtags: input.hashtags,
             platform,
-            contentType: "text",
+            contentType: hasImage ? "image" : "text",
             status: "approved",
             aiGenerated: false,
+            imageUrl: input.imageUrl,
           });
           postId = post.id;
 
@@ -478,6 +550,7 @@ export const postsRouter = router({
                 accessToken: conn.accessToken,
                 accountId: conn.accountId ?? "",
                 caption: `${caption}\n\n${hashtags}`.trim(),
+                imageUrl: input.imageUrl,
               });
               break;
             case "facebook":
@@ -485,6 +558,7 @@ export const postsRouter = router({
                 accessToken: conn.accessToken,
                 pageId: conn.pageId ?? conn.accountId ?? "",
                 message: `${caption}\n\n${hashtags}`.trim(),
+                imageUrl: input.imageUrl,
               });
               break;
             case "linkedin":
@@ -495,6 +569,7 @@ export const postsRouter = router({
                 authorUrn: conn.accountId ?? "",
                 text: caption,
                 hashtags,
+                imageUrl: input.imageUrl,
               });
               break;
             case "youtube":
@@ -503,6 +578,7 @@ export const postsRouter = router({
                 refreshToken: conn.refreshToken ?? undefined,
                 text: caption,
                 hashtags,
+                imageUrl: input.imageUrl,
               });
               break;
             default:
