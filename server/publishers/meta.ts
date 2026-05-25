@@ -63,55 +63,41 @@ export async function publishToInstagram(params: {
       };
     }
 
-// Wait for the container to be ready before publishing.
-      // Instagram needs time to download and process the image; if we publish too
-      // early we get "Media ID is not available".
-      {
-        const maxAttempts = 30;
-        const delayMs = 2000;
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          await new Promise((r) => setTimeout(r, delayMs));
-          const statusRes = await fetch(
-            `${baseUrl}/${containerData.id}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`,
-          );
-          const statusData = (await statusRes.json()) as { status_code?: string; error?: { message: string } };
-          if (statusData.status_code === "FINISHED") break;
-          if (statusData.status_code === "ERROR" || statusData.status_code === "EXPIRED") {
-            return {
-              success: false,
-              error: `Instagram failed to process the image (status: ${statusData.status_code}).`,
-            };
-          }
-          if (attempt === maxAttempts - 1) {
-            return {
-              success: false,
-              error: `Instagram took too long to process the image (last status: ${statusData.status_code ?? `HTTP ${statusRes.status}: ${JSON.stringify(statusData).slice(0, 200)}`}).`,
-            };
-          }
-        }
+// Brief wait so Instagram has time to download the image before we publish.
+      // (Polling status_code returns Authorization Error on some token types, so we skip it.)
+      await new Promise((r) => setTimeout(r, 4000));
+
+// Step 2: Publish the container — retry if IG still needs more time for the image.
+      let publishData: { id?: string; error?: { message: string } } = {};
+      let publishRes: Response | null = null;
+      const publishMaxAttempts = 6;
+      const publishDelayMs = 5000;
+      for (let attempt = 0; attempt < publishMaxAttempts; attempt++) {
+        publishRes = await fetch(`${baseUrl}/${accountId}/media_publish`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            creation_id: containerData.id,
+            access_token: accessToken,
+          }),
+        });
+        publishData = (await publishRes.json()) as { id?: string; error?: { message: string } };
+        if (publishRes.ok && publishData.id) break;
+        const errMsg = publishData.error?.message ?? "";
+        const retryable = errMsg.indexOf("Media ID is not available") >= 0;
+        if (!retryable || attempt === publishMaxAttempts - 1) break;
+        await new Promise((r) => setTimeout(r, publishDelayMs));
       }
 
-          // Step 2: Publish the container
-    const publishRes = await fetch(`${baseUrl}/${accountId}/media_publish`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        creation_id: containerData.id,
-        access_token: accessToken,
-      }),
-    });
+      if (!publishRes || !publishRes.ok || !publishData.id) {
+        return {
+          success: false,
+          error: publishData.error?.message ?? `Publish failed (${publishRes?.status ?? "no response"})`,
+        };
+      }
 
-    const publishData = await publishRes.json() as { id?: string; error?: { message: string } };
-
-    if (!publishRes.ok || !publishData.id) {
-      return {
-        success: false,
-        error: publishData.error?.message ?? `Publish failed (${publishRes.status})`,
-      };
-    }
-
-    return { success: true, externalPostId: publishData.id };
-  } catch (err) {
+      return { success: true, externalPostId: publishData.id };
+      } catch (err) {
     return { success: false, error: String(err) };
   }
 }
