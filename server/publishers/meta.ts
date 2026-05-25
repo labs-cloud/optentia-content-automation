@@ -67,7 +67,7 @@ export async function publishToInstagram(params: {
       // Instagram needs time to download and process the image; if we publish too
       // early we get "Media ID is not available".
       {
-        const maxAttempts = 15;
+        const maxAttempts = 30;
         const delayMs = 2000;
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           await new Promise((r) => setTimeout(r, delayMs));
