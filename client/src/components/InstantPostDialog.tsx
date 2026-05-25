@@ -17,6 +17,7 @@ import {
   Image as ImageIcon,
   Check,
   Loader2,
+  Shuffle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,6 +56,17 @@ const PLATFORM_KEYS: PlatformKey[] = [
   "youtube",
 ];
 
+const VARIATION_HINTS = [
+  "Use a different layout — try an asymmetric, off-center composition.",
+  "Bolder, more saturated accent color from the palette. Push contrast.",
+  "Try a more dramatic camera angle or unexpected framing.",
+  "Make the main hook text much larger and more dominant on the canvas.",
+  "Use more negative space and a quieter, minimalist composition.",
+  "Switch the background to a textured or gradient backdrop.",
+  "Stack the text vertically instead of horizontally.",
+  "Try a more editorial, magazine-cover feel.",
+];
+
 export function InstantPostDialog({ trigger }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("topic");
@@ -62,18 +74,21 @@ export function InstantPostDialog({ trigger }: Props) {
   // Step 1: topic
   const [topic, setTopic] = useState("");
 
-  // Step 2: caption ideas + chosen
+  // Step 2: captions
   const [captionIdeas, setCaptionIdeas] = useState<CaptionIdea[]>([]);
   const [chosenCaption, setChosenCaption] = useState<CaptionIdea | null>(null);
 
-  // Step 3: visual concepts + chosen
+  // Step 3: concepts
   const [visualConcepts, setVisualConcepts] = useState<VisualConcept[]>([]);
   const [chosenConcept, setChosenConcept] = useState<VisualConcept | null>(null);
 
-  // Step 4: preview image
+  // Step 4: preview + variation tracker
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [variationIdx, setVariationIdx] = useState(0);
 
-  // Step 5: platforms
+  // Step 5: editable caption + platforms
+  const [editedCaption, setEditedCaption] = useState("");
+  const [editedHashtags, setEditedHashtags] = useState("");
   const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
     instagram: true,
     linkedin_personal: false,
@@ -140,6 +155,9 @@ export function InstantPostDialog({ trigger }: Props) {
       setVisualConcepts([]);
       setChosenConcept(null);
       setPreviewUrl(null);
+      setVariationIdx(0);
+      setEditedCaption("");
+      setEditedHashtags("");
     }, 200);
   }
 
@@ -159,18 +177,35 @@ export function InstantPostDialog({ trigger }: Props) {
 
   function handlePickCaption(idea: CaptionIdea) {
     setChosenCaption(idea);
+    setEditedCaption(idea.caption);
+    setEditedHashtags(idea.hashtags);
     generateConceptsMut.mutate({ caption: idea.caption });
   }
 
   function handlePickConcept(concept: VisualConcept) {
     setChosenConcept(concept);
+    setVariationIdx(0);
     generateImageMut.mutate({ imagePrompt: concept.imagePrompt, size: "1024x1024" });
   }
 
   function handleRegeneratePreview() {
     if (!chosenConcept) return;
     setPreviewUrl(null);
-    generateImageMut.mutate({ imagePrompt: chosenConcept.imagePrompt, size: "1024x1024" });
+    const nextIdx = variationIdx + 1;
+    setVariationIdx(nextIdx);
+    const hint = VARIATION_HINTS[nextIdx % VARIATION_HINTS.length];
+    generateImageMut.mutate({
+      imagePrompt: `${chosenConcept.imagePrompt}\n\nVariation note: ${hint}`,
+      size: "1024x1024",
+    });
+  }
+
+  function handleTryDifferentConcepts() {
+    if (!chosenCaption) return;
+    setPreviewUrl(null);
+    setChosenConcept(null);
+    setVisualConcepts([]);
+    generateConceptsMut.mutate({ caption: chosenCaption.caption });
   }
 
   function handleAcceptPreview() {
@@ -178,15 +213,15 @@ export function InstantPostDialog({ trigger }: Props) {
   }
 
   function handlePublish() {
-    if (!chosenCaption || !previewUrl) return;
+    if (!editedCaption.trim() || !previewUrl) return;
     const platforms = PLATFORM_KEYS.filter((p) => selected[p]);
     if (platforms.length === 0) {
       toast.error("Pick at least one platform");
       return;
     }
     quickPublishMut.mutate({
-      caption: chosenCaption.caption,
-      hashtags: chosenCaption.hashtags,
+      caption: editedCaption.trim(),
+      hashtags: editedHashtags.trim() || undefined,
       imageUrl: previewUrl,
       platforms,
     });
@@ -230,8 +265,8 @@ export function InstantPostDialog({ trigger }: Props) {
             {step === "topic" && "What's the post about?"}
             {step === "caption" && "Pick a caption angle."}
             {step === "concept" && "Pick a visual concept."}
-            {step === "preview" && "Preview the image. Regenerate or accept."}
-            {step === "publish" && "Pick platforms and publish."}
+            {step === "preview" && "Preview, regenerate, or try different concepts."}
+            {step === "publish" && "Edit caption, pick platforms, publish."}
           </DialogDescription>
         </DialogHeader>
 
@@ -329,7 +364,7 @@ export function InstantPostDialog({ trigger }: Props) {
                 {chosenConcept.description}
               </p>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -338,7 +373,17 @@ export function InstantPostDialog({ trigger }: Props) {
                 className="gap-2"
               >
                 <RefreshCw className="size-4" />
-                Regenerate
+                Regenerate (variation)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTryDifferentConcepts}
+                disabled={busy || !chosenCaption}
+                className="gap-2"
+              >
+                <Shuffle className="size-4" />
+                Different concepts
               </Button>
               <Button
                 size="sm"
@@ -360,11 +405,30 @@ export function InstantPostDialog({ trigger }: Props) {
                 <img src={previewUrl} alt="Final" className="w-full h-auto max-h-48 object-cover" />
               </div>
             )}
-            {chosenCaption && (
-              <div className="rounded-md bg-muted/30 p-3 max-h-32 overflow-y-auto">
-                <p className="text-xs whitespace-pre-wrap leading-snug">{chosenCaption.caption}</p>
-              </div>
-            )}
+            <div className="space-y-1">
+              <Label htmlFor="edit-caption" className="text-xs">
+                Caption (edit freely)
+              </Label>
+              <Textarea
+                id="edit-caption"
+                value={editedCaption}
+                onChange={(e) => setEditedCaption(e.target.value)}
+                rows={6}
+                className="text-xs leading-snug resize-y"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-hashtags" className="text-xs">
+                Hashtags
+              </Label>
+              <Textarea
+                id="edit-hashtags"
+                value={editedHashtags}
+                onChange={(e) => setEditedHashtags(e.target.value)}
+                rows={2}
+                className="text-xs resize-y"
+              />
+            </div>
             <div className="space-y-2">
               <Label>Platforms</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -383,7 +447,7 @@ export function InstantPostDialog({ trigger }: Props) {
                         }
                       />
                       <span className="text-sm">
-                        {cfg.emoji} {cfg.label}
+                        {cfg.icon} {cfg.label}
                       </span>
                     </label>
                   );
@@ -429,7 +493,7 @@ export function InstantPostDialog({ trigger }: Props) {
           {step === "publish" && (
             <Button
               onClick={handlePublish}
-              disabled={busy || !previewUrl || !chosenCaption}
+              disabled={busy || !previewUrl || !editedCaption.trim()}
               className="gap-2 ml-auto"
             >
               {quickPublishMut.isPending ? (
