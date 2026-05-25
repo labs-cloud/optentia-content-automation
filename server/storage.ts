@@ -1,17 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { ENV } from "./_core/env";
-
-function getR2Client(): S3Client {
-  return new S3Client({
-    region: "auto",
-    endpoint: `https://${ENV.r2AccountId}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: ENV.r2AccessKeyId,
-      secretAccessKey: ENV.r2SecretAccessKey,
-    },
-  });
-}
+import { put } from "@vercel/blob";
 
 function normalizeKey(relKey: string): string {
   return relKey.replace(/^\/+/, "");
@@ -29,20 +16,16 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
-  const r2 = getR2Client();
   const key = appendHashSuffix(normalizeKey(relKey));
   const body = typeof data === "string" ? Buffer.from(data) : data;
 
-  await r2.send(
-    new PutObjectCommand({
-      Bucket: ENV.r2BucketName,
-      Key: key,
-      Body: body,
-      ContentType: contentType,
-    })
-  );
+  const blob = await put(key, body, {
+    access: "public",
+    contentType,
+    addRandomSuffix: false,
+  });
 
-  return { key, url: `/manus-storage/${key}` };
+  return { key, url: blob.url };
 }
 
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
@@ -51,12 +34,9 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 }
 
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  const r2 = getR2Client();
+  // With Vercel Blob public access, storagePut returns the full public URL.
+  // Legacy callers that hit /manus-storage/* will get a 404; they should be
+  // updated to use the URL returned from storagePut directly.
   const key = normalizeKey(relKey);
-
-  return getSignedUrl(
-    r2,
-    new GetObjectCommand({ Bucket: ENV.r2BucketName, Key: key }),
-    { expiresIn: 3600 }
-  );
+  return `/manus-storage/${key}`;
 }
