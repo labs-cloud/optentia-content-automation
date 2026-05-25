@@ -89,6 +89,15 @@ const CONTENT_PILLAR_CONTEXT: Record<string, string> = {
   direct_promotion: "Highlight a case study, DM offer, consultation call, or product launch. Use before/after framing.",
 };
 
+const PLATFORM_ENUM = z.enum([
+  "instagram",
+  "linkedin",
+  "linkedin_personal",
+  "linkedin_company",
+  "facebook",
+  "youtube",
+]);
+
 export const postsRouter = router({
   list: protectedProcedure
     .input(z.object({
@@ -118,7 +127,7 @@ export const postsRouter = router({
       title: z.string().optional(),
       caption: z.string(),
       hashtags: z.string().optional(),
-      platform: z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]),
+      platform: PLATFORM_ENUM,
       contentType: z.enum(["text", "image", "video", "reel", "story", "carousel"]).default("text"),
       contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).optional(),
       scheduledAt: z.string().optional(),
@@ -220,7 +229,7 @@ export const postsRouter = router({
 
   generateAI: protectedProcedure
     .input(z.object({
-      platform: z.enum(["instagram", "linkedin", "linkedin_personal", "linkedin_company", "facebook", "youtube"]),
+      platform: PLATFORM_ENUM,
       contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).default("strong_opinion"),
       topic: z.string().optional(),
       tone: z.string().optional(),
@@ -408,5 +417,156 @@ export const postsRouter = router({
       });
 
       return { success: true, externalPostId: result.externalPostId };
+    }),
+
+  /**
+   * Instant post: create + publish a free-form caption to one or more
+   * platforms in a single request, no review queue, no schedule.
+   *
+   * Returns a per-platform result so the UI can show which ones landed.
+   */
+  quickPublish: protectedProcedure
+    .input(z.object({
+      caption: z.string().min(1),
+      hashtags: z.string().optional(),
+      platforms: z.array(PLATFORM_ENUM).min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const { getPlatformConnection } = await import("../db");
+      const { publishToInstagram, publishToFacebook } = await import("../publishers/meta");
+      const { publishToLinkedIn } = await import("../publishers/linkedin");
+      const { publishYouTubeCommunityPost } = await import("../publishers/youtube");
+
+      const results: Array<{
+        platform: string;
+        success: boolean;
+        postId?: number;
+        externalPostId?: string;
+        error?: string;
+      }> = [];
+
+      for (const platform of input.platforms) {
+        let postId: number | undefined;
+        try {
+          const conn = await getPlatformConnection(platform);
+          if (!conn?.accessToken) {
+            results.push({
+              platform,
+              success: false,
+              error: `No credentials configured for ${platform}. Add them in Platform Settings.`,
+            });
+            continue;
+          }
+
+          const post = await createContentPost({
+            caption: input.caption,
+            hashtags: input.hashtags,
+            platform,
+            contentType: "text",
+            status: "approved",
+            aiGenerated: false,
+          });
+          postId = post.id;
+
+          const caption = input.caption;
+          const hashtags = input.hashtags ?? "";
+          let publishResult: { success: boolean; externalPostId?: string; error?: string };
+
+          switch (platform) {
+            case "instagram":
+              publishResult = await publishToInstagram({
+                accessToken: conn.accessToken,
+                accountId: conn.accountId ?? "",
+                caption: `${caption}\n\n${hashtags}`.trim(),
+              });
+              break;
+            case "facebook":
+              publishResult = await publishToFacebook({
+                accessToken: conn.accessToken,
+                pageId: conn.pageId ?? conn.accountId ?? "",
+                message: `${caption}\n\n${hashtags}`.trim(),
+              });
+              break;
+            case "linkedin":
+            case "linkedin_personal":
+            case "linkedin_company":
+              publishResult = await publishToLinkedIn({
+                accessToken: conn.accessToken,
+                authorUrn: conn.accountId ?? "",
+                text: caption,
+                hashtags,
+              });
+              break;
+            case "youtube":
+              publishResult = await publishYouTubeCommunityPost({
+                accessToken: conn.accessToken,
+                refreshToken: conn.refreshToken ?? undefined,
+                text: caption,
+                hashtags,
+              });
+              break;
+            default:
+              publishResult = { success: false, error: `Unknown platform: ${platform}` };
+          }
+
+          if (!publishResult.success) {
+            await updateContentPost(post.id, {
+              status: "failed",
+              publishError: publishResult.error,
+            });
+            await recordAnalyticsEvent({ postId: post.id, platform, eventType: "failed" });
+            results.push({
+              platform,
+              success: false,
+              postId: post.id,
+              error: publishResult.error,
+            });
+            continue;
+          }
+
+          await updateContentPost(post.id, {
+            status: "published",
+            publishedAt: new Date(),
+            externalPostId: publishResult.externalPostId,
+            publishError: null,
+          });
+          await recordAnalyticsEvent({ postId: post.id, platform, eventType: "published" });
+          results.push({
+            platform,
+            success: true,
+            postId: post.id,
+            externalPostId: publishResult.externalPostId,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (postId !== undefined) {
+            try {
+              await updateContentPost(postId, { status: "failed", publishError: msg });
+            } catch {
+              // best-effort cleanup
+            }
+          }
+          results.push({ platform, success: false, postId, error: msg });
+        }
+      }
+
+      const anySuccess = results.some((r) => r.success);
+      const anyFailure = results.some((r) => !r.success);
+      if (anySuccess || anyFailure) {
+        await notifyOwner({
+          title: anyFailure
+            ? `⚠️ Instant post: ${results.filter((r) => r.success).length}/${results.length} succeeded`
+            : `✓ Instant post: published to ${results.length} platform${results.length === 1 ? "" : "s"}`,
+          content: results
+            .map((r) =>
+              r.success
+                ? `${r.platform}: published${r.externalPostId ? ` (${r.externalPostId})` : ""}`
+                : `${r.platform}: failed — ${r.error ?? "unknown error"}`,
+            )
+            .join("\n"),
+        });
+      }
+
+      return results;
     }),
 });
