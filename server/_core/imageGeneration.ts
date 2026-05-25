@@ -24,9 +24,16 @@ export type GenerateImageResponse = {
 export async function generateImage(
   options: GenerateImageOptions
 ): Promise<GenerateImageResponse> {
-  const size = options.size ?? "1024x1024";
+  const requestedSize = options.size ?? "1024x1024";
+  // gpt-image-1 supports: 1024x1024, 1024x1536 (portrait), 1536x1024 (landscape)
+  const sizeMap: Record<string, "1024x1024" | "1024x1536" | "1536x1024"> = {
+    "1024x1024": "1024x1024",
+    "1792x1024": "1536x1024",
+    "1024x1792": "1024x1536",
+  };
+  const size = sizeMap[requestedSize] ?? "1024x1024";
   const response = await openai.images.generate({
-    model: "dall-e-3",
+    model: "gpt-image-1",
     prompt: options.prompt,
     n: 1,
     size,
