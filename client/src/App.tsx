@@ -14,33 +14,24 @@ import Analytics from "./pages/Analytics";
 import HeyGen from "./pages/HeyGen";
 import Platforms from "./pages/Platforms";
 import Schedules from "./pages/Schedules";
-import Login from "./pages/Login";
 
 function Router() {
   return (
-    <Switch>
-      {/* Auth page — outside DashboardLayout */}
-      <Route path="/login" component={Login} />
-
-      {/* All app pages inside DashboardLayout */}
-      <Route>
-        <DashboardLayout>
-          <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/queue" component={ContentQueue} />
-            <Route path="/calendar" component={ContentCalendar} />
-            <Route path="/library" component={ContentLibrary} />
-            <Route path="/generate" component={AIGenerator} />
-            <Route path="/analytics" component={Analytics} />
-            <Route path="/heygen" component={HeyGen} />
-            <Route path="/platforms" component={Platforms} />
-            <Route path="/schedules" component={Schedules} />
-            <Route path="/404" component={NotFound} />
-            <Route component={NotFound} />
-          </Switch>
-        </DashboardLayout>
-      </Route>
-    </Switch>
+    <DashboardLayout>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/queue" component={ContentQueue} />
+        <Route path="/calendar" component={ContentCalendar} />
+        <Route path="/library" component={ContentLibrary} />
+        <Route path="/generate" component={AIGenerator} />
+        <Route path="/analytics" component={Analytics} />
+        <Route path="/heygen" component={HeyGen} />
+        <Route path="/platforms" component={Platforms} />
+        <Route path="/schedules" component={Schedules} />
+        <Route path="/404" component={NotFound} />
+        <Route component={NotFound} />
+      </Switch>
+    </DashboardLayout>
   );
 }
 
