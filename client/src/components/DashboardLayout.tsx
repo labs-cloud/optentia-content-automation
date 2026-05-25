@@ -21,7 +21,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
-import { SignIn } from "@clerk/clerk-react";
+import { SignIn, useClerk, useUser } from "@clerk/clerk-react";
 import {
   BarChart3,
   CalendarDays,
@@ -66,19 +66,45 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
     return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
   });
-  const { loading, user } = useAuth();
+  const { loading, user, error } = useAuth();
+  const { isLoaded, isSignedIn } = useUser();
+  const { signOut } = useClerk();
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
   }, [sidebarWidth]);
 
-  if (loading) return <DashboardLayoutSkeleton />;
+  // Wait for Clerk to load before deciding what to render.
+  if (!isLoaded || loading) return <DashboardLayoutSkeleton />;
 
-  if (!user) {
-    // Not signed in — render Clerk's hosted SignIn UI inline.
+  // Not signed in to Clerk yet — show the SignIn UI. Only render this when
+  // Clerk reports no session, otherwise <SignIn> auto-redirects and we loop.
+  if (!isSignedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <SignIn routing="hash" signUpUrl="#/sign-up" />
+      </div>
+    );
+  }
+
+  // Signed in to Clerk but the backend couldn't load the user (likely a 500 from
+  // /api/trpc/auth.me). Show a recoverable error instead of looping into SignIn.
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="max-w-md w-full rounded-lg border border-border/50 bg-card p-6 space-y-4 text-center">
+          <h2 className="text-lg font-semibold">We couldn't load your profile</h2>
+          <p className="text-sm text-muted-foreground">
+            You're signed in with Clerk, but the server isn't responding. This usually means an
+            API deploy is in a bad state. Try signing out and back in once a fix is deployed.
+          </p>
+          {error ? (
+            <p className="text-xs text-destructive font-mono break-all">{String(error.message ?? error)}</p>
+          ) : null}
+          <Button onClick={() => signOut({ redirectUrl: "/" })} variant="destructive">
+            Sign out
+          </Button>
+        </div>
       </div>
     );
   }
