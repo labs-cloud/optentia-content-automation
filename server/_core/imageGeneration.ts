@@ -37,6 +37,8 @@ export async function generateImage(
     prompt: options.prompt,
     n: 1,
     size,
+    output_format: "jpeg",
+    output_compression: 85,
   });
 
   const item = response.data?.[0];
@@ -53,6 +55,6 @@ export async function generateImage(
     throw new Error("DALL-E 3 returned neither b64_json nor url");
   }
 
-    const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, "image/png");
+  const { url } = await storagePut(`generated/${Date.now()}.jpg`, buffer, "image/jpeg");
   return { url };
 }
