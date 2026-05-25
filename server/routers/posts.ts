@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { invokeLLM } from "../_core/llm";
-import { generateImage } from "../_core/imageGeneration";
+import { generateImage, type DalleSize } from "../_core/imageGeneration";
 import { notifyOwner } from "../_core/notification";
 import {
   createContentPost,
@@ -97,6 +97,72 @@ const PLATFORM_ENUM = z.enum([
   "facebook",
   "youtube",
 ]);
+
+type PlatformKey = z.infer<typeof PLATFORM_ENUM>;
+
+/** DALL-E aspect ratio + visual brief per platform — tuned for stop-the-scroll graphics. */
+const PLATFORM_IMAGE_BRIEF: Record<PlatformKey, { size: DalleSize; styleDesc: string }> = {
+  instagram: {
+    size: "1024x1024",
+    styleDesc: "1:1 square sized for the Instagram feed.",
+  },
+  facebook: {
+    size: "1792x1024",
+    styleDesc: "1.91:1 landscape sized for the Facebook feed / link preview.",
+  },
+  linkedin: {
+    size: "1792x1024",
+    styleDesc: "1.91:1 landscape sized for the LinkedIn feed.",
+  },
+  linkedin_personal: {
+    size: "1792x1024",
+    styleDesc: "1.91:1 landscape sized for LinkedIn (personal feed). Looks like a Justin Welsh / Dan Koe quote-graphic.",
+  },
+  linkedin_company: {
+    size: "1792x1024",
+    styleDesc: "1.91:1 landscape sized for LinkedIn (company page). Professional but bold typographic poster.",
+  },
+  youtube: {
+    size: "1024x1024",
+    styleDesc: "1:1 square for the YouTube community tab.",
+  },
+};
+
+/** Pull the punchiest 8–14 words out of the caption to use as the on-image hook. */
+function extractHook(caption: string): string {
+  const stripped = caption.replace(/\s+/g, " ").trim();
+  const firstSentence = stripped.split(/(?<=[.!?])\s+/)[0] ?? stripped;
+  if (firstSentence.length <= 90) return firstSentence;
+  const words = firstSentence.split(" ");
+  return words.slice(0, 12).join(" ");
+}
+
+function buildViralImagePrompt(caption: string, platform: PlatformKey): string {
+  const hook = extractHook(caption);
+  const brief = PLATFORM_IMAGE_BRIEF[platform];
+  return [
+    `Bold viral-style social media graphic for ${platform}. ${brief.styleDesc}`,
+    `Render this short hook as the dominant visual element, large punchy typography, easy to read: "${hook}".`,
+    `Style: high-contrast composition, ONE strong vibrant accent color (electric teal, hot pink, or vivid cyan), dark or gradient background, oversized text fills 50-70% of the frame.`,
+    `Looks like a stop-the-scroll Justin Welsh / Dan Koe quote graphic. Minimal but bold. No people, no faces, no logos, no extra decoration.`,
+    `Brand context: Optentia — AI systems and automation operator for businesses.`,
+  ].join(" ");
+}
+
+async function safeGenerateForPlatform(
+  caption: string,
+  platform: PlatformKey,
+): Promise<{ url?: string; error?: string }> {
+  try {
+    const prompt = buildViralImagePrompt(caption, platform);
+    const { size } = PLATFORM_IMAGE_BRIEF[platform];
+    const result = await generateImage({ prompt, size });
+    if (!result.url) return { error: "Image generation returned no URL" };
+    return { url: result.url };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 export const postsRouter = router({
   list: protectedProcedure
@@ -219,7 +285,6 @@ export const postsRouter = router({
       const post = await getContentPostById(input.id);
       if (!post) throw new TRPCError({ code: "NOT_FOUND" });
       const updated = await updateContentPost(input.id, { status: "pending_approval" });
-      // Notify owner
       await notifyOwner({
         title: "Content Pending Approval",
         content: `A new ${post.platform} post is waiting for your review: "${post.title || post.caption?.substring(0, 60)}..."`,
@@ -266,13 +331,13 @@ export const postsRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" });
       }
 
-      // Generate an image for visual platforms (Instagram, Facebook)
       let imageUrl: string | undefined;
       let imagePrompt: string | undefined;
       if (input.platform === "instagram" || input.platform === "facebook") {
         try {
-          imagePrompt = `Professional social media graphic for a business automation company called Optentia. Theme: "${parsed.hook?.substring(0, 80)}". Style: clean, modern, dark background with teal/cyan accent colors, minimalist design, bold typography, no people, no faces. Suitable for ${input.platform}. High quality, 1:1 square format.`;
-          const imgResult = await generateImage({ prompt: imagePrompt });
+          imagePrompt = buildViralImagePrompt(parsed.caption ?? parsed.hook ?? "", input.platform);
+          const { size } = PLATFORM_IMAGE_BRIEF[input.platform];
+          const imgResult = await generateImage({ prompt: imagePrompt, size });
           if (imgResult?.url) imageUrl = imgResult.url;
         } catch (imgErr) {
           console.error("[posts] Image generation failed (non-fatal):", imgErr);
@@ -419,11 +484,7 @@ export const postsRouter = router({
       return { success: true, externalPostId: result.externalPostId };
     }),
 
-  /**
-   * Upload a user-supplied image (base64) to R2 storage and return a
-   * `/manus-storage/...` URL that the publishers and Instant Post composer
-   * can use as `imageUrl`.
-   */
+  /** Upload a user-supplied image (base64) to R2 and return a /manus-storage URL. */
   uploadImage: protectedProcedure
     .input(z.object({
       dataBase64: z.string().min(1),
@@ -447,40 +508,28 @@ export const postsRouter = router({
       return { url };
     }),
 
-  /**
-   * AI-generate an image for the Instant Post composer. Uses the same DALL-E
-   * pipeline as the AI Generator, but accepts an arbitrary prompt or a caption
-   * to derive a prompt from.
-   */
+  /** AI-generate a hook-graphic for a given caption + platform. */
   generateImageForCaption: protectedProcedure
     .input(z.object({
       caption: z.string().min(1),
       platform: PLATFORM_ENUM.optional(),
     }))
     .mutation(async ({ input }) => {
-      const promptPlatformLabel =
-        input.platform === "linkedin" ||
-        input.platform === "linkedin_personal" ||
-        input.platform === "linkedin_company"
-          ? "LinkedIn"
-          : input.platform === "facebook"
-            ? "Facebook"
-            : input.platform === "youtube"
-              ? "YouTube"
-              : "Instagram";
-      const prompt = `Professional social media graphic for Optentia, an AI systems and automation operator for businesses. Theme: "${input.caption.substring(0, 200)}". Style: clean, modern, dark background with teal/cyan accent colors, minimalist design, bold typography, no people, no faces. Suitable for ${promptPlatformLabel}. High quality, 1:1 square format.`;
-      const result = await generateImage({ prompt });
-      if (!result.url) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Image generation failed" });
+      const platform: PlatformKey = input.platform ?? "instagram";
+      const result = await safeGenerateForPlatform(input.caption, platform);
+      if (result.error || !result.url) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: result.error ?? "Image generation failed",
+        });
       }
-      return { url: result.url, prompt };
+      return { url: result.url, platform };
     }),
 
   /**
-   * Instant post: create + publish a free-form caption (with optional image)
-   * to one or more platforms in a single request. No review queue, no
-   * schedule. Returns a per-platform result so the UI can show which ones
-   * landed.
+   * Instant post: caption → optional override image → fan out to N platforms.
+   * When no `imageUrl` is provided, the server generates ONE platform-specific
+   * graphic per selected platform in parallel before publishing.
    */
   quickPublish: protectedProcedure
     .input(z.object({
@@ -495,26 +544,43 @@ export const postsRouter = router({
       const { publishToLinkedIn } = await import("../publishers/linkedin");
       const { publishYouTubeCommunityPost } = await import("../publishers/youtube");
 
+      const userOverride = input.imageUrl?.trim() || null;
+      const platformImages: Record<string, { url?: string; error?: string }> = {};
+
+      if (userOverride) {
+        for (const p of input.platforms) {
+          platformImages[p] = { url: userOverride };
+        }
+      } else {
+        await Promise.all(
+          input.platforms.map(async (p) => {
+            platformImages[p] = await safeGenerateForPlatform(input.caption, p);
+          }),
+        );
+      }
+
       const results: Array<{
         platform: string;
         success: boolean;
         postId?: number;
         externalPostId?: string;
+        imageUrl?: string;
         error?: string;
       }> = [];
 
-      const hasImage = Boolean(input.imageUrl && input.imageUrl.length > 0);
-
       for (const platform of input.platforms) {
         let postId: number | undefined;
+        const imgEntry = platformImages[platform];
+        const imgUrl = imgEntry?.url;
+
         try {
-          // Instagram strictly requires media — fail fast with a clear message
-          // so the dialog renders the right error before we even touch the API.
-          if (platform === "instagram" && !hasImage) {
+          if (platform === "instagram" && !imgUrl) {
             results.push({
               platform,
               success: false,
-              error: "Instagram requires an image. Attach or generate one before publishing.",
+              error:
+                imgEntry?.error ??
+                "Instagram requires an image but generation/upload didn't produce one.",
             });
             continue;
           }
@@ -533,10 +599,11 @@ export const postsRouter = router({
             caption: input.caption,
             hashtags: input.hashtags,
             platform,
-            contentType: hasImage ? "image" : "text",
+            contentType: imgUrl ? "image" : "text",
             status: "approved",
-            aiGenerated: false,
-            imageUrl: input.imageUrl,
+            aiGenerated: !userOverride && Boolean(imgUrl),
+            imageUrl: imgUrl,
+            imagePrompt: !userOverride && imgUrl ? buildViralImagePrompt(input.caption, platform) : undefined,
           });
           postId = post.id;
 
@@ -550,7 +617,7 @@ export const postsRouter = router({
                 accessToken: conn.accessToken,
                 accountId: conn.accountId ?? "",
                 caption: `${caption}\n\n${hashtags}`.trim(),
-                imageUrl: input.imageUrl,
+                imageUrl: imgUrl,
               });
               break;
             case "facebook":
@@ -558,7 +625,7 @@ export const postsRouter = router({
                 accessToken: conn.accessToken,
                 pageId: conn.pageId ?? conn.accountId ?? "",
                 message: `${caption}\n\n${hashtags}`.trim(),
-                imageUrl: input.imageUrl,
+                imageUrl: imgUrl,
               });
               break;
             case "linkedin":
@@ -569,7 +636,7 @@ export const postsRouter = router({
                 authorUrn: conn.accountId ?? "",
                 text: caption,
                 hashtags,
-                imageUrl: input.imageUrl,
+                imageUrl: imgUrl,
               });
               break;
             case "youtube":
@@ -578,7 +645,7 @@ export const postsRouter = router({
                 refreshToken: conn.refreshToken ?? undefined,
                 text: caption,
                 hashtags,
-                imageUrl: input.imageUrl,
+                imageUrl: imgUrl,
               });
               break;
             default:
@@ -595,6 +662,7 @@ export const postsRouter = router({
               platform,
               success: false,
               postId: post.id,
+              imageUrl: imgUrl,
               error: publishResult.error,
             });
             continue;
@@ -611,6 +679,7 @@ export const postsRouter = router({
             platform,
             success: true,
             postId: post.id,
+            imageUrl: imgUrl,
             externalPostId: publishResult.externalPostId,
           });
         } catch (err) {
@@ -622,7 +691,7 @@ export const postsRouter = router({
               // best-effort cleanup
             }
           }
-          results.push({ platform, success: false, postId, error: msg });
+          results.push({ platform, success: false, postId, imageUrl: imgUrl, error: msg });
         }
       }
 
