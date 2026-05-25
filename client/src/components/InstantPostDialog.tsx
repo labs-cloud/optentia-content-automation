@@ -1,5 +1,14 @@
-import { useState } from "react";
-import { Zap, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { useRef, useState } from "react";
+import {
+  Zap,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Image as ImageIcon,
+  Upload,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -34,24 +43,23 @@ type PublishResult = {
   error?: string;
 };
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4 MB — Vercel serverless body limit
+
 interface Props {
-  /**
-   * Optional render-prop for the trigger. If omitted, a default "Instant Post"
-   * button is rendered.
-   */
   trigger?: React.ReactNode;
 }
 
 /**
- * One-shot composer: type a caption, pick the platforms, hit publish — no
- * review queue, no schedule. Server-side this calls posts.quickPublish, which
- * creates an "approved" post per platform and immediately runs it through the
- * platform publisher.
+ * One-shot composer: type a caption, attach or generate an image, pick the
+ * platforms, hit publish — no review queue, no schedule. Server-side this
+ * calls posts.quickPublish.
  */
 export function InstantPostDialog({ trigger }: Props) {
   const [open, setOpen] = useState(false);
   const [caption, setCaption] = useState("");
   const [hashtags, setHashtags] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imagePreviewSrc, setImagePreviewSrc] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
     instagram: false,
     linkedin: false,
@@ -61,9 +69,35 @@ export function InstantPostDialog({ trigger }: Props) {
     youtube: false,
   });
   const [results, setResults] = useState<PublishResult[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: platforms } = trpc.platforms.list.useQuery();
   const utils = trpc.useUtils();
+
+  const uploadImage = trpc.posts.uploadImage.useMutation({
+    onSuccess: ({ url }) => {
+      setImageUrl(url);
+      toast.success("Image uploaded");
+    },
+    onError: (err) => {
+      toast.error(err.message || "Upload failed");
+      setImagePreviewSrc(null);
+    },
+  });
+
+  const generateImageMut = trpc.posts.generateImageForCaption.useMutation({
+    onSuccess: ({ url }) => {
+      setImageUrl(url);
+      // The R2 URL is a relative `/manus-storage/...` path; that also works as
+      // a same-origin preview src in the browser.
+      setImagePreviewSrc(url);
+      toast.success("Image generated");
+    },
+    onError: (err) => {
+      toast.error(err.message || "Image generation failed");
+    },
+  });
+
   const quickPublish = trpc.posts.quickPublish.useMutation({
     onSuccess: (data) => {
       setResults(data);
@@ -94,7 +128,8 @@ export function InstantPostDialog({ trigger }: Props) {
   );
 
   // Always show the six possible targets so the dropdown order is stable, but
-  // disable platforms the user hasn't connected yet.
+  // disable platforms the user hasn't connected yet, AND disable Instagram if
+  // there's no image attached (Instagram API rejects text-only posts).
   const allTargets: PlatformKey[] = [
     "instagram",
     "linkedin_personal",
@@ -104,26 +139,53 @@ export function InstantPostDialog({ trigger }: Props) {
     "linkedin",
   ];
 
-  const platformOptions = allTargets.map((platform) => ({
-    platform,
-    connected: connectedSet.has(platform),
-    label:
-      PLATFORM_CONFIG[platform as keyof typeof PLATFORM_CONFIG]?.label ??
+  const hasImage = Boolean(imageUrl);
+
+  const platformOptions = allTargets.map((platform) => {
+    const connected = connectedSet.has(platform);
+    const needsImage = platform === "instagram" && !hasImage;
+    const disabledReason = !connected
+      ? "Not set"
+      : needsImage
+        ? "Needs image"
+        : null;
+    return {
       platform,
-    icon: PLATFORM_CONFIG[platform as keyof typeof PLATFORM_CONFIG]?.icon ?? "•",
-  }));
+      connected,
+      disabled: !connected || needsImage,
+      disabledReason,
+      label:
+        PLATFORM_CONFIG[platform as keyof typeof PLATFORM_CONFIG]?.label ??
+        platform,
+      icon: PLATFORM_CONFIG[platform as keyof typeof PLATFORM_CONFIG]?.icon ?? "•",
+    };
+  });
 
   const selectedList = (Object.entries(selected) as Array<[PlatformKey, boolean]>)
     .filter(([, on]) => on)
     .map(([k]) => k);
+
+  // Clear stale Instagram selection if the image is removed
+  const effectiveSelected = selectedList.filter((p) => {
+    const opt = platformOptions.find((o) => o.platform === p);
+    return opt && !opt.disabled;
+  });
+
+  const busy =
+    quickPublish.isPending ||
+    uploadImage.isPending ||
+    generateImageMut.isPending;
+
   const canSubmit =
     caption.trim().length > 0 &&
-    selectedList.length > 0 &&
-    !quickPublish.isPending;
+    effectiveSelected.length > 0 &&
+    !busy;
 
   function reset() {
     setCaption("");
     setHashtags("");
+    setImageUrl(null);
+    setImagePreviewSrc(null);
     setSelected({
       instagram: false,
       linkedin: false,
@@ -134,6 +196,8 @@ export function InstantPostDialog({ trigger }: Props) {
     });
     setResults(null);
     quickPublish.reset();
+    uploadImage.reset();
+    generateImageMut.reset();
   }
 
   function handleSubmit() {
@@ -142,8 +206,52 @@ export function InstantPostDialog({ trigger }: Props) {
     quickPublish.mutate({
       caption: caption.trim(),
       hashtags: hashtags.trim() || undefined,
-      platforms: selectedList,
+      imageUrl: imageUrl ?? undefined,
+      platforms: effectiveSelected,
     });
+  }
+
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file later
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please choose an image file");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      toast.error(
+        `Image is ${Math.round(file.size / 1024 / 1024)}MB — max ${MAX_UPLOAD_BYTES / 1024 / 1024}MB`,
+      );
+      return;
+    }
+    // Show a local preview immediately so the user sees feedback while the
+    // upload roundtrips.
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setImagePreviewSrc(dataUrl);
+      const base64 = dataUrl.split(",")[1] ?? "";
+      uploadImage.mutate({ dataBase64: base64, mimeType: file.type });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleGenerate() {
+    if (!caption.trim()) {
+      toast.error("Type a caption first so the AI knows what to draw");
+      return;
+    }
+    generateImageMut.mutate({ caption: caption.trim() });
+  }
+
+  function clearImage() {
+    setImageUrl(null);
+    setImagePreviewSrc(null);
+    uploadImage.reset();
+    generateImageMut.reset();
+    // If Instagram was selected, leave the tick — it'll just disable until
+    // a new image is attached.
   }
 
   return (
@@ -162,14 +270,14 @@ export function InstantPostDialog({ trigger }: Props) {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Zap className="h-5 w-5 text-primary" />
             Instant Post
           </DialogTitle>
           <DialogDescription>
-            Type a caption, pick the platforms, publish now — no review, no schedule.
+            Type a caption, attach or generate an image, pick platforms — published immediately, no review, no schedule.
           </DialogDescription>
         </DialogHeader>
 
@@ -181,8 +289,8 @@ export function InstantPostDialog({ trigger }: Props) {
               placeholder="What do you want to say?"
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              rows={6}
-              disabled={quickPublish.isPending}
+              rows={5}
+              disabled={busy}
             />
           </div>
 
@@ -195,41 +303,118 @@ export function InstantPostDialog({ trigger }: Props) {
               placeholder="#ai #automation #optentia"
               value={hashtags}
               onChange={(e) => setHashtags(e.target.value)}
-              disabled={quickPublish.isPending}
+              disabled={busy}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>
+              Image{" "}
+              <span className="text-muted-foreground text-xs">
+                (required for Instagram)
+              </span>
+            </Label>
+            {imagePreviewSrc ? (
+              <div className="relative rounded-md border border-border/50 overflow-hidden bg-muted/20">
+                <img
+                  src={imagePreviewSrc}
+                  alt="Attached"
+                  className="w-full max-h-72 object-contain"
+                />
+                <button
+                  type="button"
+                  onClick={clearImage}
+                  disabled={busy}
+                  className="absolute top-2 right-2 h-7 w-7 rounded-full bg-background/90 backdrop-blur flex items-center justify-center hover:bg-background border border-border/50 disabled:opacity-50"
+                  aria-label="Remove image"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                {uploadImage.isPending && (
+                  <div className="absolute inset-0 bg-background/70 flex items-center justify-center text-xs gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Uploading…
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={busy}
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-2"
+                  onClick={handleGenerate}
+                  disabled={busy || !caption.trim()}
+                >
+                  {generateImageMut.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Generate with AI
+                    </>
+                  )}
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFilePick}
+                  className="hidden"
+                />
+              </div>
+            )}
+            {!imagePreviewSrc && !caption.trim() && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <ImageIcon className="h-3 w-3" />
+                Type a caption above to enable AI image generation.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
             <Label>Platforms</Label>
             <div className="grid grid-cols-2 gap-2">
-              {platformOptions.map(({ platform, connected, label, icon }) => {
-                const disabled = !connected || quickPublish.isPending;
-                return (
-                  <label
-                    key={platform}
-                    className={`flex items-center gap-2 rounded-md border border-border/50 px-3 py-2 text-sm ${
-                      disabled
-                        ? "opacity-50 cursor-not-allowed"
-                        : "cursor-pointer hover:bg-accent/40"
-                    }`}
-                  >
-                    <Checkbox
-                      checked={selected[platform]}
-                      disabled={disabled}
-                      onCheckedChange={(v) =>
-                        setSelected((s) => ({ ...s, [platform]: !!v }))
-                      }
-                    />
-                    <span className="text-base leading-none">{icon}</span>
-                    <span className="flex-1 truncate">{label}</span>
-                    {!connected && (
-                      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                        Not set
-                      </span>
-                    )}
-                  </label>
-                );
-              })}
+              {platformOptions.map(({ platform, disabled, disabledReason, label, icon }) => (
+                <label
+                  key={platform}
+                  className={`flex items-center gap-2 rounded-md border border-border/50 px-3 py-2 text-sm ${
+                    disabled || busy
+                      ? "opacity-50 cursor-not-allowed"
+                      : "cursor-pointer hover:bg-accent/40"
+                  }`}
+                >
+                  <Checkbox
+                    checked={selected[platform]}
+                    disabled={disabled || busy}
+                    onCheckedChange={(v) =>
+                      setSelected((s) => ({ ...s, [platform]: !!v }))
+                    }
+                  />
+                  <span className="text-base leading-none">{icon}</span>
+                  <span className="flex-1 truncate">{label}</span>
+                  {disabledReason && (
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {disabledReason}
+                    </span>
+                  )}
+                </label>
+              ))}
             </div>
           </div>
 
@@ -257,9 +442,7 @@ export function InstantPostDialog({ trigger }: Props) {
                       {r.success ? (
                         <p className="text-xs text-muted-foreground">
                           Published
-                          {r.externalPostId
-                            ? ` · ${r.externalPostId}`
-                            : ""}
+                          {r.externalPostId ? ` · ${r.externalPostId}` : ""}
                         </p>
                       ) : (
                         <p className="text-xs text-destructive break-words">
@@ -275,11 +458,7 @@ export function InstantPostDialog({ trigger }: Props) {
         </div>
 
         <DialogFooter className="gap-2">
-          <Button
-            variant="ghost"
-            onClick={() => setOpen(false)}
-            disabled={quickPublish.isPending}
-          >
+          <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
             Close
           </Button>
           <Button
