@@ -4,8 +4,12 @@ import { ENV } from "./env";
 
 const openai = new OpenAI({ apiKey: ENV.openaiApiKey });
 
+export type DalleSize = "1024x1024" | "1792x1024" | "1024x1792";
+
 export type GenerateImageOptions = {
   prompt: string;
+  /** DALL-E 3 size. Defaults to "1024x1024" (square). */
+  size?: DalleSize;
   originalImages?: Array<{
     url?: string;
     b64Json?: string;
@@ -20,11 +24,12 @@ export type GenerateImageResponse = {
 export async function generateImage(
   options: GenerateImageOptions
 ): Promise<GenerateImageResponse> {
+  const size = options.size ?? "1024x1024";
   const response = await openai.images.generate({
     model: "dall-e-3",
     prompt: options.prompt,
     n: 1,
-    size: "1024x1024",
+    size,
     response_format: "b64_json",
   });
 
