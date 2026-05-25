@@ -32,10 +32,20 @@ export async function generateImage(
     size,
   });
 
-  const b64 = response.data?.[0]?.b64_json;
-  if (!b64) throw new Error("DALL-E 3 returned no image data");
+  const item = response.data?.[0];
+  if (!item) throw new Error("DALL-E 3 returned no image data");
 
-  const buffer = Buffer.from(b64, "base64");
-  const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, "image/png");
+  let buffer: Buffer;
+  if (item.b64_json) {
+    buffer = Buffer.from(item.b64_json, "base64");
+  } else if (item.url) {
+    const imgResponse = await fetch(item.url);
+    if (!imgResponse.ok) throw new Error(`Failed to download generated image from OpenAI (${imgResponse.status})`);
+    buffer = Buffer.from(await imgResponse.arrayBuffer());
+  } else {
+    throw new Error("DALL-E 3 returned neither b64_json nor url");
+  }
+
+    const { url } = await storagePut(`generated/${Date.now()}.png`, buffer, "image/png");
   return { url };
 }
