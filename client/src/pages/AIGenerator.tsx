@@ -4,170 +4,216 @@ import { PLATFORM_CONFIG, CONTENT_PILLARS } from "@/lib/platformUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { CheckCircle2, Loader2, Sparkles, Zap } from "lucide-react";
+import {
+  Sparkles,
+  Loader2,
+  ChevronLeft,
+  RefreshCw,
+  Check,
+  Send,
+  FileText,
+} from "lucide-react";
 import { useLocation } from "wouter";
 
 type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
 type Pillar = "strong_opinion" | "practical_education" | "documentary" | "direct_promotion";
 
-type GeneratedPost = {
-  id: number;
-  platform: string;
-  title: string | null;
-  caption: string | null;
-  hashtags: string | null;
-  imageUrl: string | null;
-  status: string;
-};
+interface CaptionIdea {
+  tone: string;
+  caption: string;
+  hashtags: string;
+}
+
+interface VisualConcept {
+  id: string;
+  styleName: string;
+  description: string;
+  colors: string[];
+  imagePrompt: string;
+}
+
+type Step = "settings" | "caption" | "concept" | "preview" | "confirm";
+
+const PLATFORM_KEYS: Platform[] = [
+  "instagram",
+  "linkedin_personal",
+  "linkedin_company",
+  "facebook",
+  "youtube",
+];
+
+const pillarConfig = (p: Pillar) => CONTENT_PILLARS.find((x) => x.value === p);
 
 export default function AIGenerator() {
   const [, setLocation] = useLocation();
-  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>(["instagram", "linkedin_personal", "linkedin_company"]);
-  const [selectedPillar, setSelectedPillar] = useState<Pillar>("strong_opinion");
+  const [step, setStep] = useState<Step>("settings");
+
+  // Step 1: settings
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>([
+    "instagram",
+    "linkedin_personal",
+    "linkedin_company",
+  ]);
+  const [pillar, setPillar] = useState<Pillar>("strong_opinion");
   const [topic, setTopic] = useState("");
-  const [autoApproval, setAutoApproval] = useState(false);
-  const [generatedCount, setGeneratedCount] = useState(0);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedPosts, setGeneratedPosts] = useState<GeneratedPost[]>([]);
+  const [skipApproval, setSkipApproval] = useState(false);
+
+  // Step 2: captions
+  const [captionIdeas, setCaptionIdeas] = useState<CaptionIdea[]>([]);
+  const [chosenCaption, setChosenCaption] = useState<CaptionIdea | null>(null);
+
+  // Step 3: concepts
+  const [visualConcepts, setVisualConcepts] = useState<VisualConcept[]>([]);
+  const [chosenConcept, setChosenConcept] = useState<VisualConcept | null>(null);
+
+  // Step 4: preview
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
 
-  const generateMutation = trpc.posts.generateAI.useMutation({
-    onSuccess: () => {
-      utils.posts.list.invalidate();
-      utils.analytics.summary.invalidate();
+  const captionsMut = trpc.posts.generateCaptionIdeas.useMutation({
+    onSuccess: (data) => {
+      setCaptionIdeas(data.ideas ?? []);
+      setStep("caption");
     },
-    onError: (e) => toast.error(`Generation failed: ${e.message}`),
+    onError: (e) => toast.error(`Couldn't generate caption ideas: ${e.message}`),
   });
 
+  const conceptsMut = trpc.posts.generateVisualConcepts.useMutation({
+    onSuccess: (data) => {
+      setVisualConcepts(data.concepts ?? []);
+      setStep("concept");
+    },
+    onError: (e) => toast.error(`Couldn't generate visual concepts: ${e.message}`),
+  });
+
+  const imageMut = trpc.posts.generateImageFromConcept.useMutation({
+    onSuccess: (data) => {
+      setPreviewUrl(data.url);
+      setStep("preview");
+    },
+    onError: (e) => toast.error(`Image generation failed: ${e.message}`),
+  });
+
+  const finalizeMut = trpc.posts.createFromWizard.useMutation({
+    onSuccess: (data) => {
+      const n = data.results?.length ?? 0;
+      const dest = skipApproval ? "drafts" : "approval queue";
+      toast.success(`Saved ${n} post${n > 1 ? "s" : ""} to ${dest}`);
+      void utils.posts.list.invalidate();
+      setLocation("/queue");
+    },
+    onError: (e) => toast.error(`Save failed: ${e.message}`),
+  });
+
+  const busy =
+    captionsMut.isPending ||
+    conceptsMut.isPending ||
+    imageMut.isPending ||
+    finalizeMut.isPending;
+
   const togglePlatform = (p: Platform) => {
-    setSelectedPlatforms((prev) =>
-      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+    setSelectedPlatforms((curr) =>
+      curr.includes(p) ? curr.filter((x) => x !== p) : [...curr, p]
     );
   };
 
-  const handleGenerate = async () => {
+  const handleGenerateCaptions = () => {
     if (selectedPlatforms.length === 0) {
-      toast.error("Select at least one platform");
+      toast.error("Pick at least one platform");
       return;
     }
-    setIsGenerating(true);
-    setGeneratedCount(0);
-    setGeneratedPosts([]);
-    let count = 0;
-    const newPosts: GeneratedPost[] = [];
-    for (const platform of selectedPlatforms) {
-      try {
-        const result = await generateMutation.mutateAsync({
-          platform,
-          contentPillar: selectedPillar,
-          topic: topic || undefined,
-          autoSubmitForApproval: !autoApproval,
-        });
-        if (result) {
-          newPosts.push({
-            id: result.id,
-            platform: result.platform,
-            title: result.title ?? null,
-            caption: result.caption ?? null,
-            hashtags: result.hashtags ?? null,
-            imageUrl: (result as any).imageUrl ?? null,
-            status: result.status,
-          });
-        }
-        count++;
-        setGeneratedCount(count);
-      } catch {
-        // error already toasted
-      }
-    }
-    setIsGenerating(false);
-    setGeneratedPosts(newPosts);
-    if (count > 0) {
-      toast.success(`Generated ${count} post${count > 1 ? "s" : ""} — ${autoApproval ? "saved as drafts" : "sent for approval"}`);
-    }
+    const pCfg = pillarConfig(pillar);
+    const enrichedTopic = topic.trim()
+      ? `${topic.trim()}\n\nContent pillar: ${pCfg?.label ?? pillar} — ${pCfg?.description ?? ""}`
+      : `${pCfg?.label ?? pillar} — ${pCfg?.description ?? ""}`;
+    captionsMut.mutate({ topic: enrichedTopic, platform: selectedPlatforms[0] });
   };
 
+  const handlePickCaption = (idea: CaptionIdea) => {
+    setChosenCaption(idea);
+    conceptsMut.mutate({ caption: idea.caption });
+  };
+
+  const handlePickConcept = (c: VisualConcept) => {
+    setChosenConcept(c);
+    imageMut.mutate({ imagePrompt: c.imagePrompt, size: "1024x1024" });
+  };
+
+  const handleRegenerate = () => {
+    if (!chosenConcept) return;
+    setPreviewUrl(null);
+    imageMut.mutate({ imagePrompt: chosenConcept.imagePrompt, size: "1024x1024" });
+  };
+
+  const handleFinalize = () => {
+    if (!chosenCaption || !previewUrl) return;
+    finalizeMut.mutate({
+      caption: chosenCaption.caption,
+      hashtags: chosenCaption.hashtags,
+      imageUrl: previewUrl,
+      platforms: selectedPlatforms,
+      pillar,
+      status: skipApproval ? "draft" : "pending_approval",
+    });
+  };
+
+  const goBack = () => {
+    if (step === "caption") setStep("settings");
+    else if (step === "concept") setStep("caption");
+    else if (step === "preview") setStep("concept");
+    else if (step === "confirm") setStep("preview");
+  };
+
+  const stepNumber = { settings: 1, caption: 2, concept: 3, preview: 4, confirm: 5 }[step];
+
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-display font-bold tracking-tight flex items-center gap-2">
-          <Sparkles className="h-6 w-6 text-primary" />
-          AI Content Generator
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Generate platform-optimized posts using Optentia's brand voice and content strategy
-        </p>
+    <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-3xl font-bold">
+            <Sparkles className="size-7 text-primary" />
+            AI Content Generator
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Topic → caption → visual concept → image → publish
+          </p>
+        </div>
+        <div className="text-sm text-muted-foreground">Step {stepNumber} of 5</div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Config Panel */}
-        <div className="lg:col-span-3 space-y-5">
-          {/* Platform Selection */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Target Platforms</CardTitle>
+      {/* Step 1: Settings */}
+      {step === "settings" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Target Platforms</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-3">
-                {(Object.entries(PLATFORM_CONFIG) as [Platform, typeof PLATFORM_CONFIG[Platform]][]).map(([platform, cfg]) => {
-                  const selected = selectedPlatforms.includes(platform);
+                {PLATFORM_KEYS.map((p) => {
+                  const cfg = PLATFORM_CONFIG[p];
+                  if (!cfg) return null;
+                  const active = selectedPlatforms.includes(p);
                   return (
                     <button
-                      key={platform}
-                      onClick={() => togglePlatform(platform)}
-                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
-                        selected
-                          ? `${cfg.bgColor} ${cfg.borderColor} ${cfg.color}`
-                          : "bg-muted/20 border-border/50 text-muted-foreground hover:bg-muted/40"
+                      key={p}
+                      type="button"
+                      onClick={() => togglePlatform(p)}
+                      className={`text-left rounded-lg border p-4 transition ${
+                        active
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-card hover:border-primary/40"
                       }`}
                     >
-                      <span className="text-xl">{cfg.icon}</span>
-                      <div>
-                        <p className="text-sm font-medium">{cfg.label}</p>
-                        <p className="text-xs opacity-70">
-                          {platform === "instagram" ? "Reels & captions" :
-                           platform === "linkedin_personal" ? "Personal thought leadership" :
-                           platform === "linkedin_company" ? "Company page posts" :
-                           platform === "facebook" ? "Discussion posts" :
-                           "Video scripts"}
-                        </p>
-                      </div>
-                      {selected && <CheckCircle2 className="h-4 w-4 ml-auto shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Content Pillar */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Content Pillar</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {CONTENT_PILLARS.map((pillar) => {
-                  const selected = selectedPillar === pillar.value;
-                  return (
-                    <button
-                      key={pillar.value}
-                      onClick={() => setSelectedPillar(pillar.value as Pillar)}
-                      className={`w-full flex items-start gap-3 p-3 rounded-xl border transition-all text-left ${
-                        selected
-                          ? "bg-primary/10 border-primary/30 text-primary"
-                          : "bg-muted/20 border-border/50 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
-                      }`}
-                    >
-                      <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${selected ? "bg-primary" : "bg-muted-foreground"}`} />
-                      <div>
-                        <p className="text-sm font-medium">{pillar.label}</p>
-                        <p className="text-xs opacity-70 mt-0.5">{pillar.description}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">
+                          {cfg.icon} {cfg.label}
+                        </span>
+                        {active && <Check className="size-4 text-primary" />}
                       </div>
                     </button>
                   );
@@ -176,167 +222,295 @@ export default function AIGenerator() {
             </CardContent>
           </Card>
 
-          {/* Topic / Angle */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Topic or Angle <span className="text-muted-foreground font-normal">(optional)</span></CardTitle>
+          <Card>
+            <CardHeader>
+              <CardTitle>Generation Settings</CardTitle>
             </CardHeader>
-            <CardContent>
-              <Textarea
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                placeholder="e.g. 'Why most businesses fail at AI implementation' or 'The 3-step CRM automation workflow'"
-                rows={3}
-                className="bg-muted/30 border-border/50 resize-none text-sm"
-              />
-              <p className="text-xs text-muted-foreground mt-2">
-                Leave blank and the AI will choose a compelling topic aligned with Optentia's brand.
+            <CardContent className="space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <Label htmlFor="skip-approval">Skip approval queue</Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Save as draft instead of pending review
+                  </p>
+                </div>
+                <Switch
+                  id="skip-approval"
+                  checked={skipApproval}
+                  onCheckedChange={setSkipApproval}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground border-t border-border pt-3">
+                {selectedPlatforms.length} platform{selectedPlatforms.length === 1 ? "" : "s"}{" "}
+                selected — will create {selectedPlatforms.length} post
+                {selectedPlatforms.length === 1 ? "" : "s"}
               </p>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Right Panel */}
-        <div className="lg:col-span-2 space-y-5">
-          {/* Generation Settings */}
-          <Card className="bg-card border-border/50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Generation Settings</CardTitle>
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Content Pillar</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium">Skip approval queue</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Save as draft instead of pending review</p>
-                </div>
-                <Switch checked={autoApproval} onCheckedChange={setAutoApproval} />
-              </div>
-              <div className="pt-2 border-t border-border/50">
-                <p className="text-xs text-muted-foreground">
-                  {selectedPlatforms.length} platform{selectedPlatforms.length !== 1 ? "s" : ""} selected — will generate {selectedPlatforms.length} post{selectedPlatforms.length !== 1 ? "s" : ""}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Generate Button */}
-          <Button
-            size="lg"
-            className="w-full gap-2 glow-primary h-12 text-base font-semibold"
-            onClick={handleGenerate}
-            disabled={isGenerating || selectedPlatforms.length === 0}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Generating {generatedCount}/{selectedPlatforms.length}...
-              </>
-            ) : (
-              <>
-                <Zap className="h-5 w-5" />
-                Generate {selectedPlatforms.length} Post{selectedPlatforms.length !== 1 ? "s" : ""}
-              </>
-            )}
-          </Button>
-
-          {/* Brand Context */}
-          <Card className="bg-muted/20 border-border/30">
-            <CardContent className="p-4">
-              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Brand Context</p>
-              <div className="space-y-2 text-xs text-muted-foreground">
-                <div className="flex gap-2">
-                  <span className="text-primary">→</span>
-                  <span>AI systems & automation operator</span>
-                </div>
-                <div className="flex gap-2">
-                  <span className="text-primary">→</span>
-                  <span>Strategic, calm, intelligent, direct</span>
-                </div>
-                <div className="flex gap-2">
-                  <span className="text-primary">→</span>
-                  <span>40% opinions · 30% education · 20% documentary · 10% promo</span>
-                </div>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3">
+                {CONTENT_PILLARS.map((p) => {
+                  const active = pillar === p.value;
+                  return (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => setPillar(p.value as Pillar)}
+                      className={`text-left rounded-lg border p-4 transition ${
+                        active
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-card hover:border-primary/40"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-medium">{p.label}</span>
+                        {active && <Check className="size-4 text-primary" />}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{p.description}</p>
+                    </button>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
 
-          {/* Quick Actions */}
-          <div className="space-y-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Topic or Angle{" "}
+                <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                placeholder="e.g. 'Why most businesses fail at AI implementation' or 'The 3-step CRM automation workflow'"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                rows={4}
+                className="resize-none"
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Leave blank and AI will pick a topic aligned with the pillar.
+              </p>
+            </CardContent>
+          </Card>
+
+          <div className="lg:col-span-3 flex justify-end">
             <Button
-              variant="outline"
-              size="sm"
-              className="w-full text-xs"
-              onClick={() => setLocation("/queue")}
+              size="lg"
+              onClick={handleGenerateCaptions}
+              disabled={busy || selectedPlatforms.length === 0}
+              className="gap-2"
             >
-              View Content Queue
+              {captionsMut.isPending ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <Sparkles className="size-5" />
+              )}
+              Generate caption ideas
             </Button>
           </div>
         </div>
+      )}
 
-        {/* Generated Posts Preview */}
-        {generatedPosts.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-              <h2 className="text-base font-semibold">Generated Posts</h2>
-              <span className="text-xs text-muted-foreground">{generatedPosts.length} post{generatedPosts.length > 1 ? "s" : ""} created</span>
+      {/* Step 2: Caption */}
+      {step === "caption" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pick a caption angle</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {captionIdeas.map((idea, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => handlePickCaption(idea)}
+                disabled={busy}
+                className="w-full text-left rounded-lg border border-border bg-card hover:border-primary/60 hover:bg-accent/30 transition p-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-primary">
+                    {idea.tone}
+                  </span>
+                </div>
+                <p className="text-sm leading-snug whitespace-pre-wrap line-clamp-8">
+                  {idea.caption}
+                </p>
+                {idea.hashtags && (
+                  <p className="text-xs text-muted-foreground mt-2 line-clamp-1">
+                    {idea.hashtags}
+                  </p>
+                )}
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 3: Concept */}
+      {step === "concept" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pick a visual concept</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {visualConcepts.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => handlePickConcept(c)}
+                disabled={busy}
+                className="w-full text-left rounded-lg border border-border bg-card hover:border-primary/60 hover:bg-accent/30 transition p-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex gap-1">
+                    {c.colors.slice(0, 3).map((hex, idx) => (
+                      <span
+                        key={idx}
+                        className="size-5 rounded border border-border/40"
+                        style={{ backgroundColor: hex }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-sm font-semibold">{c.styleName}</span>
+                </div>
+                <p className="text-sm text-muted-foreground leading-snug">{c.description}</p>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 4: Preview */}
+      {step === "preview" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Preview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {previewUrl ? (
+              <div className="rounded-lg overflow-hidden border border-border bg-muted/30 max-w-md mx-auto">
+                <img
+                  src={previewUrl}
+                  alt="Generated preview"
+                  className="w-full h-auto object-cover"
+                />
+              </div>
+            ) : (
+              <div className="aspect-square max-w-md mx-auto rounded-lg bg-muted/30 flex items-center justify-center">
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {chosenConcept && (
+              <p className="text-xs text-muted-foreground text-center">
+                <span className="font-medium">{chosenConcept.styleName}</span> ·{" "}
+                {chosenConcept.description}
+              </p>
+            )}
+            <div className="flex gap-2 justify-center">
+              <Button
+                variant="outline"
+                onClick={handleRegenerate}
+                disabled={busy || !chosenConcept}
+                className="gap-2"
+              >
+                <RefreshCw className="size-4" />
+                Regenerate
+              </Button>
+              <Button
+                onClick={() => setStep("confirm")}
+                disabled={busy || !previewUrl}
+                className="gap-2"
+              >
+                <Check className="size-4" />
+                Use this image
+              </Button>
             </div>
-            <div className="grid gap-4">
-              {generatedPosts.map((post) => {
-                const cfg = PLATFORM_CONFIG[post.platform as keyof typeof PLATFORM_CONFIG];
-                return (
-                  <Card key={post.id} className="bg-card border-border/50">
-                    <CardContent className="p-5">
-                      <div className="flex gap-4">
-                        {/* Image preview */}
-                        {post.imageUrl ? (
-                          <img
-                            src={post.imageUrl}
-                            alt="Generated"
-                            className="h-28 w-28 object-cover rounded-lg border border-border/50 shrink-0"
-                          />
-                        ) : (
-                          <div className={`h-28 w-28 rounded-lg ${cfg?.bgColor} border ${cfg?.borderColor} flex items-center justify-center shrink-0`}>
-                            <span className="text-3xl">{cfg?.icon}</span>
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className={`text-xs font-semibold ${cfg?.color}`}>{cfg?.label}</span>
-                            <div className="px-2 py-0.5 rounded-full text-xs bg-amber-500/10 text-amber-400">
-                              {post.status === "pending_approval" ? "Pending Review" : "Draft"}
-                            </div>
-                            {post.imageUrl && (
-                              <div className="px-2 py-0.5 rounded-full text-xs bg-violet-500/10 text-violet-400">
-                                AI Image
-                              </div>
-                            )}
-                          </div>
-                          {post.title && (
-                            <p className="text-sm font-semibold mb-1 line-clamp-1">{post.title}</p>
-                          )}
-                          <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">{post.caption}</p>
-                          {post.hashtags && (
-                            <p className="text-xs text-primary/60 mt-1.5 line-clamp-1">{post.hashtags}</p>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 5: Confirm */}
+      {step === "confirm" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Confirm and save</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {previewUrl && (
+                <div className="rounded-lg overflow-hidden border border-border bg-muted/30">
+                  <img src={previewUrl} alt="Final" className="w-full h-auto object-cover" />
+                </div>
+              )}
+              <div className="space-y-3">
+                {chosenCaption && (
+                  <div className="rounded-md bg-muted/30 p-3 max-h-48 overflow-y-auto">
+                    <p className="text-xs whitespace-pre-wrap leading-snug">
+                      {chosenCaption.caption}
+                    </p>
+                    {chosenCaption.hashtags && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {chosenCaption.hashtags}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>
+                    <span className="font-medium">Platforms:</span>{" "}
+                    {selectedPlatforms
+                      .map((p) => PLATFORM_CONFIG[p]?.label ?? p)
+                      .join(", ")}
+                  </p>
+                  <p>
+                    <span className="font-medium">Pillar:</span>{" "}
+                    {pillarConfig(pillar)?.label ?? pillar}
+                  </p>
+                  <p>
+                    <span className="font-medium">Destination:</span>{" "}
+                    {skipApproval ? "Drafts" : "Approval queue"}
+                  </p>
+                </div>
+              </div>
             </div>
-            <Button
-              variant="outline"
-              className="w-full text-sm gap-2"
-              onClick={() => setLocation("/queue")}
-            >
-              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-              Review & Approve in Content Queue
-            </Button>
-          </div>
-        )}
-      </div>
+            <div className="flex justify-end">
+              <Button
+                size="lg"
+                onClick={handleFinalize}
+                disabled={busy || !chosenCaption || !previewUrl}
+                className="gap-2"
+              >
+                {finalizeMut.isPending ? (
+                  <Loader2 className="size-5 animate-spin" />
+                ) : skipApproval ? (
+                  <FileText className="size-5" />
+                ) : (
+                  <Send className="size-5" />
+                )}
+                {skipApproval
+                  ? `Save ${selectedPlatforms.length} draft${selectedPlatforms.length === 1 ? "" : "s"}`
+                  : `Submit ${selectedPlatforms.length} for approval`}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Back button (all steps except settings) */}
+      {step !== "settings" && (
+        <div className="flex">
+          <Button variant="ghost" onClick={goBack} disabled={busy} className="gap-2">
+            <ChevronLeft className="size-4" />
+            Back
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
