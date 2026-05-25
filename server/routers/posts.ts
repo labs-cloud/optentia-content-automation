@@ -743,7 +743,11 @@ Return ONLY valid JSON in this exact shape (no preamble, no markdown fence):
     { "tone": "Story", "caption": "...", "hashtags": "#tag1 #tag2 #tag3" }
   ]
 }`;
-      const raw = await invokeLLM({ prompt, maxTokens: 2000 });
+      const response = await invokeLLM({
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 2000,
+      });
+      const raw = response.choices[0]?.message?.content ?? "";
       const cleaned = raw.replace(/^\`\`\`json\s*/i, "").replace(/\`\`\`\s*$/i, "").trim();
       let parsed: { ideas: Array<{ tone: string; caption: string; hashtags: string }> };
       try {
@@ -782,7 +786,11 @@ Return ONLY valid JSON (no preamble, no markdown fence):
     { "styleName": "Documentary Photo", "description": "...", "colors": ["...", "...", "..."], "imagePrompt": "..." }
   ]
 }`;
-      const raw = await invokeLLM({ prompt, maxTokens: 2500 });
+      const response = await invokeLLM({
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 2500,
+      });
+      const raw = response.choices[0]?.message?.content ?? "";
       const cleaned = raw.replace(/^\`\`\`json\s*/i, "").replace(/\`\`\`\s*$/i, "").trim();
       let parsed: { concepts: Array<{ styleName: string; description: string; colors: string[]; imagePrompt: string }> };
       try {
