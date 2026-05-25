@@ -820,4 +820,33 @@ Return ONLY valid JSON (no preamble, no markdown fence):
       }
     }),
 
+  /** Wizard finalizer: create N posts (one per platform) from chosen caption + image. */
+  createFromWizard: protectedProcedure
+    .input(z.object({
+      caption: z.string().min(1),
+      hashtags: z.string().optional(),
+      imageUrl: z.string().optional(),
+      platforms: z.array(PLATFORM_ENUM).min(1),
+      pillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).optional(),
+      status: z.enum(["draft", "pending_approval"]).default("draft"),
+    }))
+    .mutation(async ({ input }) => {
+      const results: Array<{ platform: string; postId: number }> = [];
+      for (const platform of input.platforms) {
+        const post = await createContentPost({
+          caption: input.caption,
+          hashtags: input.hashtags,
+          platform,
+          contentType: input.imageUrl ? "image" : "text",
+          contentPillar: input.pillar,
+          mediaUrl: input.imageUrl,
+          imageUrl: input.imageUrl,
+          status: input.status,
+          aiGenerated: true,
+        });
+        if (post) results.push({ platform, postId: post.id });
+      }
+      return { results };
+    }),
+
 });
