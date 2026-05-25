@@ -30,7 +30,6 @@ export async function generateImage(
     prompt: options.prompt,
     n: 1,
     size,
-    response_format: "b64_json",
   });
 
   const b64 = response.data?.[0]?.b64_json;
