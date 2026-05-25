@@ -397,7 +397,7 @@ export const postsRouter = router({
     .mutation(async ({ input }) => {
       const post = await getContentPostById(input.id);
       if (!post) throw new TRPCError({ code: "NOT_FOUND" });
-      if (post.status !== "approved" && post.status !== "scheduled") {
+      if (post.status !== "approved" && post.status !== "scheduled" && post.status !== "failed") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved or scheduled posts can be published" });
       }
 
