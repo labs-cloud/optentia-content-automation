@@ -12,6 +12,7 @@ import { createContext } from "./_core/context";
 import {
   checkAndRunHandler,
   generateContentHandler,
+  migrateHandler,
   publishPostsHandler,
 } from "./cronHandlers";
 
@@ -26,6 +27,9 @@ registerStorageProxy(app);
 app.post("/api/scheduled/check-and-run", checkAndRunHandler);
 app.post("/api/scheduled/generate-content", generateContentHandler);
 app.post("/api/scheduled/publish-posts", publishPostsHandler);
+// GET so it can be triggered from a browser address bar with ?secret=
+app.get("/api/scheduled/migrate", migrateHandler);
+app.post("/api/scheduled/migrate", migrateHandler);
 
 app.use(
   "/api/trpc",

@@ -22,6 +22,8 @@ import {
   loadPromptContext,
   type PromptContext,
 } from "./promptBuilder";
+import { ensureMultiClientSchema } from "./ensureSchema";
+import { runSeed } from "./seedCore";
 import { CONTENT_PILLARS, isManualPlatform, type ContentPillar, type Platform } from "@shared/platforms";
 import { publishToInstagram, publishToFacebook } from "./publishers/meta";
 import { publishToLinkedIn } from "./publishers/linkedin";
@@ -29,7 +31,26 @@ import { publishYouTubeCommunityPost } from "./publishers/youtube";
 
 function validateCronRequest(req: Request): boolean {
   if (!ENV.cronSecret) return false;
-  return req.headers.authorization === `Bearer ${ENV.cronSecret}`;
+  const querySecret = typeof req.query?.secret === "string" ? req.query.secret : undefined;
+  return (
+    req.headers.authorization === `Bearer ${ENV.cronSecret}` ||
+    querySecret === ENV.cronSecret
+  );
+}
+
+let bootstrapped = false;
+
+/**
+ * Self-applying migration + seed: brings the DB up to the multi-client schema
+ * and ensures the Optentia/demo clients exist (incl. legacy-row backfill).
+ * Runs once per process; every statement is idempotent.
+ */
+async function ensureBootstrap(): Promise<{ applied: string[] } | null> {
+  if (bootstrapped) return null;
+  const { applied } = await ensureMultiClientSchema();
+  await runSeed();
+  bootstrapped = true;
+  return { applied };
 }
 
 function computeNextRunAt(cronExpr: string): Date {
@@ -221,6 +242,7 @@ export async function checkAndRunHandler(req: Request, res: Response) {
   }
 
   try {
+    await ensureBootstrap();
     const [genResult, pubResult] = await Promise.all([
       runGenerateContent(),
       runPublishPosts(),
@@ -228,6 +250,27 @@ export async function checkAndRunHandler(req: Request, res: Response) {
     return res.json({ ok: true, ...genResult, ...pubResult });
   } catch (err) {
     console.error("[cron] check-and-run error:", err);
+    return res.status(500).json({ error: String(err), timestamp: new Date().toISOString() });
+  }
+}
+
+/**
+ * Manual migration trigger: GET/POST /api/scheduled/migrate?secret=CRON_SECRET
+ * Idempotent — applies the multi-client schema and seeds Optentia + demo data.
+ */
+export async function migrateHandler(req: Request, res: Response) {
+  if (!validateCronRequest(req)) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  try {
+    const result = await ensureBootstrap();
+    return res.json({
+      ok: true,
+      alreadyBootstrapped: result === null,
+      applied: result?.applied ?? [],
+    });
+  } catch (err) {
+    console.error("[cron] migrate error:", err);
     return res.status(500).json({ error: String(err), timestamp: new Date().toISOString() });
   }
 }
