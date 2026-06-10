@@ -1,3 +1,5 @@
+> **OUTDATED (kept for history):** this handoff describes the original Manus→Vercel migration. The app has since become a multi-client AI marketing OS — see `README.md` and `docs/V2_MULTI_CLIENT_UPGRADE.md`.
+
 # Optentia Content Automation — Claude Handoff Prompt
 
 Copy everything below this line and paste it as your first message in a new Claude.ai Project or Claude Code session after connecting the GitHub repo.
