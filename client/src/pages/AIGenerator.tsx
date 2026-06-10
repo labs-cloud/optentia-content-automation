@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { PLATFORM_CONFIG, CONTENT_PILLARS } from "@/lib/platformUtils";
+import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +17,7 @@ import {
   Check,
   Send,
   FileText,
+  Briefcase,
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -49,6 +52,8 @@ const pillarConfig = (p: Pillar) => CONTENT_PILLARS.find((x) => x.value === p);
 
 export default function AIGenerator() {
   const [, setLocation] = useLocation();
+  const { activeClient } = useActiveClient();
+  const { clientId, enabled } = useClientScope();
   const [step, setStep] = useState<Step>("settings");
 
   // Step 1: settings
@@ -130,12 +135,12 @@ export default function AIGenerator() {
     const enrichedTopic = topic.trim()
       ? `${topic.trim()}\n\nContent pillar: ${pCfg?.label ?? pillar} — ${pCfg?.description ?? ""}`
       : `${pCfg?.label ?? pillar} — ${pCfg?.description ?? ""}`;
-    captionsMut.mutate({ topic: enrichedTopic, platform: selectedPlatforms[0] });
+    captionsMut.mutate({ clientId, topic: enrichedTopic, platform: selectedPlatforms[0] });
   };
 
   const handlePickCaption = (idea: CaptionIdea) => {
     setChosenCaption(idea);
-    conceptsMut.mutate({ caption: idea.caption });
+    conceptsMut.mutate({ clientId, caption: idea.caption });
   };
 
   const handlePickConcept = (c: VisualConcept) => {
@@ -152,6 +157,7 @@ export default function AIGenerator() {
   const handleFinalize = () => {
     if (!chosenCaption || !previewUrl) return;
     finalizeMut.mutate({
+      clientId,
       caption: chosenCaption.caption,
       hashtags: chosenCaption.hashtags,
       imageUrl: previewUrl,
@@ -170,6 +176,20 @@ export default function AIGenerator() {
 
   const stepNumber = { settings: 1, caption: 2, concept: 3, preview: 4, confirm: 5 }[step];
 
+  if (!enabled) {
+    return (
+      <div className="max-w-5xl mx-auto p-6">
+        <EmptyState
+          icon={Briefcase}
+          title="No client selected"
+          description="Select a client workspace to generate on-brand content."
+          actionLabel="Go to Clients"
+          onAction={() => setLocation("/clients")}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
       <div className="flex items-start justify-between">
@@ -179,7 +199,7 @@ export default function AIGenerator() {
             AI Content Generator
           </h1>
           <p className="text-muted-foreground mt-1">
-            Topic → caption → visual concept → image → publish
+            Generating for {activeClient?.name} — topic → caption → visual concept → image → publish
           </p>
         </div>
         <div className="text-sm text-muted-foreground">Step {stepNumber} of 5</div>

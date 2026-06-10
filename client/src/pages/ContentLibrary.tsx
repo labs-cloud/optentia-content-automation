@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { PLATFORM_CONFIG, STATUS_CONFIG, formatRelativeTime, truncate } from "@/lib/platformUtils";
+import { useClientScope } from "@/contexts/ActiveClientContext";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { FolderOpen, Search, Sparkles, Trash2 } from "lucide-react";
+import { Briefcase, FolderOpen, Search, Sparkles, Trash2 } from "lucide-react";
+import { useLocation } from "wouter";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All Statuses" },
@@ -23,24 +26,33 @@ const STATUS_OPTIONS = [
 const PLATFORM_OPTIONS = [
   { value: "all", label: "All Platforms" },
   { value: "instagram", label: "Instagram" },
+  { value: "linkedin", label: "LinkedIn" },
   { value: "linkedin_personal", label: "LinkedIn (Personal)" },
   { value: "linkedin_company", label: "LinkedIn (Company)" },
   { value: "facebook", label: "Facebook" },
   { value: "youtube", label: "YouTube" },
+  { value: "email", label: "Email" },
+  { value: "whatsapp", label: "WhatsApp" },
 ];
 
 export default function ContentLibrary() {
+  const [, setLocation] = useLocation();
+  const { clientId, enabled } = useClientScope();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
 
   const utils = trpc.useUtils();
 
-  const { data: posts, isLoading } = trpc.posts.list.useQuery({
-    status: statusFilter === "all" ? undefined : statusFilter,
-    platform: platformFilter === "all" ? undefined : platformFilter,
-    limit: 100,
-  });
+  const { data: posts, isLoading } = trpc.posts.list.useQuery(
+    {
+      clientId,
+      status: statusFilter === "all" ? undefined : statusFilter,
+      platform: platformFilter === "all" ? undefined : platformFilter,
+      limit: 100,
+    },
+    { enabled }
+  );
 
   const deleteMutation = trpc.posts.delete.useMutation({
     onSuccess: () => {
@@ -60,6 +72,20 @@ export default function ContentLibrary() {
       p.hashtags?.toLowerCase().includes(q)
     );
   });
+
+  if (!enabled) {
+    return (
+      <div className="p-6 max-w-5xl">
+        <EmptyState
+          icon={Briefcase}
+          title="No client selected"
+          description="Select a client workspace to browse its content library."
+          actionLabel="Go to Clients"
+          onAction={() => setLocation("/clients")}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">

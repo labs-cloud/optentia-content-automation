@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CheckCircle2, Clapperboard, Clock, Loader2, Play, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { Briefcase, CheckCircle2, Clapperboard, Clock, Loader2, Play, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { useLocation } from "wouter";
 
 const STATUS_STYLES: Record<string, { label: string; color: string; bg: string }> = {
   pending: { label: "Pending", color: "text-amber-400", bg: "bg-amber-500/10" },
@@ -17,6 +20,9 @@ const STATUS_STYLES: Record<string, { label: string; color: string; bg: string }
 };
 
 export default function HeyGen() {
+  const [, setLocation] = useLocation();
+  const { activeClient } = useActiveClient();
+  const { clientId, enabled } = useClientScope();
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
   const [scriptText, setScriptText] = useState("");
@@ -28,7 +34,7 @@ export default function HeyGen() {
   const [scriptTopic, setScriptTopic] = useState("");
 
   const utils = trpc.useUtils();
-  const { data: requests, isLoading } = trpc.heygen.list.useQuery();
+  const { data: requests, isLoading } = trpc.heygen.list.useQuery({ clientId }, { enabled });
 
   const generateScriptMutation = trpc.posts.generateAI.useMutation({
     onSuccess: (data) => {
@@ -70,12 +76,27 @@ export default function HeyGen() {
 
   const handleGenerateScript = () => {
     generateScriptMutation.mutate({
+      clientId,
       platform: "youtube",
       contentPillar: "practical_education",
       topic: scriptTopic || undefined,
       autoSubmitForApproval: false,
     });
   };
+
+  if (!enabled) {
+    return (
+      <div className="p-6 max-w-5xl">
+        <EmptyState
+          icon={Briefcase}
+          title="No client selected"
+          description="Select a client workspace to create AI avatar videos."
+          actionLabel="Go to Clients"
+          onAction={() => setLocation("/clients")}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
@@ -191,7 +212,7 @@ export default function HeyGen() {
         <CardContent className="p-4">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">HeyGen Integration</p>
           <div className="space-y-1.5 text-xs text-muted-foreground">
-            <p>• Use the AI Script Generator to create compelling video scripts from Optentia's brand voice.</p>
+            <p>• Use the AI Script Generator to create compelling video scripts in {activeClient?.name ?? "your client"}'s brand voice.</p>
             <p>• Submit scripts to HeyGen with your avatar and voice IDs to generate AI presenter videos.</p>
             <p>• Completed videos can be linked to YouTube posts in your content library.</p>
             <p>• Get your HeyGen API key at <a href="https://app.heygen.com" target="_blank" className="text-primary hover:underline">app.heygen.com</a></p>
@@ -287,7 +308,7 @@ export default function HeyGen() {
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowCreate(false); resetForm(); }}>Cancel</Button>
             <Button
-              onClick={() => createMutation.mutate({ title, scriptText, avatarId: avatarId || undefined, voiceId: voiceId || undefined, apiKey: apiKey || undefined })}
+              onClick={() => createMutation.mutate({ clientId, title, scriptText, avatarId: avatarId || undefined, voiceId: voiceId || undefined, apiKey: apiKey || undefined })}
               disabled={createMutation.isPending || !title || !scriptText}
               className="gap-2"
             >

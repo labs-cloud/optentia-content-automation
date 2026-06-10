@@ -1,17 +1,19 @@
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createMediaAsset, deleteMediaAsset, getMediaAssets } from "../db";
+import { assertClientAccess } from "../_core/clientScope";
 import { protectedProcedure, router } from "../_core/trpc";
 
 export const mediaRouter = router({
   list: protectedProcedure
-    .input(z.object({ type: z.string().optional() }))
-    .query(async ({ input }) => {
-      return getMediaAssets(input.type);
+    .input(z.object({ clientId: z.number(), type: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
+      return getMediaAssets(input.type, input.clientId);
     }),
 
   create: protectedProcedure
     .input(z.object({
+      clientId: z.number(),
       name: z.string(),
       type: z.enum(["image", "video", "audio", "document"]),
       url: z.string(),
@@ -21,7 +23,8 @@ export const mediaRouter = router({
       linkedPostId: z.number().optional(),
       tags: z.array(z.string()).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
       const { tags, ...rest } = input;
       return createMediaAsset({
         ...rest,

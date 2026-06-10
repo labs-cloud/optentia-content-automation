@@ -8,7 +8,7 @@ import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
-import { checkAndRunHandler, generateContentHandler, publishPostsHandler } from "../cronHandlers";
+import { checkAndRunHandler, generateContentHandler, migrateHandler, publishPostsHandler } from "../cronHandlers";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -42,6 +42,9 @@ async function startServer() {
   app.post("/api/scheduled/check-and-run", checkAndRunHandler);
   app.post("/api/scheduled/generate-content", generateContentHandler);
   app.post("/api/scheduled/publish-posts", publishPostsHandler);
+  // GET so it can be triggered from a browser address bar with ?secret=
+  app.get("/api/scheduled/migrate", migrateHandler);
+  app.post("/api/scheduled/migrate", migrateHandler);
 
   app.use(
     "/api/trpc",

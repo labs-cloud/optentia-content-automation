@@ -1,10 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { invokeLLM } from "../_core/llm";
+import { trackedInvokeLLM } from "../_core/trackedLlm";
 import { generateImage, type DalleSize } from "../_core/imageGeneration";
 import { notifyOwner } from "../_core/notification";
+import { assertClientAccess } from "../_core/clientScope";
 import {
   createContentPost,
+  createPreferenceSignal,
   deleteContentPost,
   getContentPostById,
   getContentPosts,
@@ -12,150 +14,29 @@ import {
   recordAnalyticsEvent,
   updateContentPost,
 } from "../db";
+import {
+  buildBrandBlock,
+  buildImagePrompt,
+  buildPostPrompt,
+  extractHook,
+  loadPromptContext,
+  type PromptContext,
+} from "../promptBuilder";
+import { PLATFORMS, CONTENT_PILLARS, isManualPlatform, type Platform } from "@shared/platforms";
 import { protectedProcedure, router } from "../_core/trpc";
 
-const PLATFORM_PROMPTS: Record<string, string> = {
-  instagram: `You are an expert Instagram content creator for Optentia — an AI systems and automation operator for businesses.
-
-Will Hershey is the founder and face of this account. Audience: business owners who want to implement AI.
-
-Write a high-performing Instagram post that:
-- Opens with a bold, scroll-stopping hook (under 125 characters before "more")
-- Delivers a sharp insight on AI systems, automation, or business operations (150-300 words)
-- Uses direct, intelligent language — no hype, no buzzwords
-- Closes with a specific CTA (e.g., "DM me 'SYSTEM'" or "Link in bio")
-- Includes 15-20 targeted hashtags in the hashtags field
-
-Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  linkedin: `You are a LinkedIn ghostwriter for Will Hershey, founder of Optentia — an AI systems and automation operator for businesses.
-
-Write a personal LinkedIn post that:
-- Opens with a single punchy line that makes people stop scrolling
-- Shares a genuine perspective from operating an AI automation business (200-400 words)
-- Writes in first person, conversational but authoritative
-- Ends with a clear next step or question
-- Includes 3-5 strategic hashtags
-
-Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  linkedin_personal: `You are a LinkedIn ghostwriter for Will Hershey, founder of Optentia — an AI systems and automation operator for businesses.
-
-Write a personal LinkedIn post that:
-- Opens with a single punchy line that makes people stop scrolling
-- Shares a genuine first-person perspective on AI, automation, or business building (200-400 words)
-- Writes in first person — direct and confident, not corporate
-- Ends with a clear insight or question to drive comments
-- Includes 3-5 strategic hashtags
-
-Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  linkedin_company: `You are a LinkedIn content strategist for Optentia, an AI systems and automation operator for businesses.
-
-Write a company LinkedIn post that:
-- Opens with a bold business insight or data point
-- Establishes Optentia's authority in AI systems and automation (200-400 words)
-- Uses confident, professional brand voice — not generic corporate speak
-- Ends with a clear value proposition or CTA for business owners
-- Includes 3-5 industry hashtags
-
-Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  facebook: `You are a Facebook content creator for Optentia — an AI systems and automation operator for businesses.
-
-Write a discussion-driving Facebook post that:
-- Opens with a controversial or counterintuitive statement about AI or business
-- Develops the idea with specific examples (100-250 words)
-- Ends with a direct question that invites business owners to respond
-- Includes 3-5 relevant hashtags
-
-Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  youtube: `You are a YouTube content strategist for Optentia — an AI systems and automation operator for businesses.
-
-Write a YouTube video package that:
-- Creates a compelling, search-optimized title
-- Writes a hook script for the first 30 seconds (what viewers will learn and why it matters now)
-- Writes an optimized video description (150-300 words) covering the topic with a timestamp placeholder
-- Includes 10-15 SEO-optimized tags
-
-Return only valid JSON, no markdown fences: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
-};
-
-const CONTENT_PILLAR_CONTEXT: Record<string, string> = {
-  strong_opinion: "Focus on a bold take about business inefficiency, AI misuse, or systems thinking. Be direct and opinionated.",
-  practical_education: "Provide actionable, step-by-step automation or AI workflow education. Include a specific example.",
-  documentary: "Share a behind-the-scenes look at daily workflows, desk setups, or business building process.",
-  direct_promotion: "Highlight a case study, DM offer, consultation call, or product launch. Use before/after framing.",
-};
-
-const PLATFORM_ENUM = z.enum([
-  "instagram",
-  "linkedin",
-  "linkedin_personal",
-  "linkedin_company",
-  "facebook",
-  "youtube",
-]);
+const PLATFORM_ENUM = z.enum(PLATFORMS);
+const PILLAR_ENUM = z.enum(CONTENT_PILLARS);
 
 type PlatformKey = z.infer<typeof PLATFORM_ENUM>;
 
-/** DALL-E aspect ratio + visual brief per platform — tuned for stop-the-scroll graphics. */
-const PLATFORM_IMAGE_BRIEF: Record<PlatformKey, { size: DalleSize; styleDesc: string }> = {
-  instagram: {
-    size: "1024x1024",
-    styleDesc: "1:1 square sized for the Instagram feed.",
-  },
-  facebook: {
-    size: "1792x1024",
-    styleDesc: "1.91:1 landscape sized for the Facebook feed / link preview.",
-  },
-  linkedin: {
-    size: "1792x1024",
-    styleDesc: "1.91:1 landscape sized for the LinkedIn feed.",
-  },
-  linkedin_personal: {
-    size: "1792x1024",
-    styleDesc: "1.91:1 landscape sized for LinkedIn (personal feed). Looks like a Justin Welsh / Dan Koe quote-graphic.",
-  },
-  linkedin_company: {
-    size: "1792x1024",
-    styleDesc: "1.91:1 landscape sized for LinkedIn (company page). Professional but bold typographic poster.",
-  },
-  youtube: {
-    size: "1024x1024",
-    styleDesc: "1:1 square for the YouTube community tab.",
-  },
-};
-
-/** Pull the punchiest 8–14 words out of the caption to use as the on-image hook. */
-function extractHook(caption: string): string {
-  const stripped = caption.replace(/\s+/g, " ").trim();
-  const firstSentence = stripped.split(/(?<=[.!?])\s+/)[0] ?? stripped;
-  if (firstSentence.length <= 90) return firstSentence;
-  const words = firstSentence.split(" ");
-  return words.slice(0, 12).join(" ");
-}
-
-function buildViralImagePrompt(caption: string, platform: PlatformKey): string {
-  const hook = extractHook(caption);
-  const brief = PLATFORM_IMAGE_BRIEF[platform];
-  return [
-    `Bold viral-style social media graphic for ${platform}. ${brief.styleDesc}`,
-    `Render this short hook as the dominant visual element, large punchy typography, easy to read: "${hook}".`,
-    `Style: high-contrast composition, ONE strong vibrant accent color (electric teal, hot pink, or vivid cyan), dark or gradient background, oversized text fills 50-70% of the frame.`,
-    `Looks like a stop-the-scroll Justin Welsh / Dan Koe quote graphic. Minimal but bold. No people, no faces, no logos, no extra decoration.`,
-    `Brand context: Optentia — AI systems and automation operator for businesses.`,
-  ].join(" ");
-}
-
 async function safeGenerateForPlatform(
+  ctx: PromptContext | null,
   caption: string,
   platform: PlatformKey,
 ): Promise<{ url?: string; error?: string }> {
   try {
-    const prompt = buildViralImagePrompt(caption, platform);
-    const { size } = PLATFORM_IMAGE_BRIEF[platform];
+    const { prompt, size } = buildImagePrompt(ctx, { caption, platform });
     const result = await generateImage({ prompt, size });
     if (!result.url) return { error: "Image generation returned no URL" };
     return { url: result.url };
@@ -167,18 +48,24 @@ async function safeGenerateForPlatform(
 export const postsRouter = router({
   list: protectedProcedure
     .input(z.object({
+      clientId: z.number(),
       status: z.string().optional(),
       platform: z.string().optional(),
+      campaignId: z.number().optional(),
       limit: z.number().default(50),
       offset: z.number().default(0),
     }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
       return getContentPosts(input);
     }),
 
-  pendingApproval: protectedProcedure.query(async () => {
-    return getPendingApprovalPosts();
-  }),
+  pendingApproval: protectedProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
+      return getPendingApprovalPosts(input.clientId);
+    }),
 
   get: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -190,17 +77,20 @@ export const postsRouter = router({
 
   create: protectedProcedure
     .input(z.object({
+      clientId: z.number(),
+      campaignId: z.number().optional(),
       title: z.string().optional(),
       caption: z.string(),
       hashtags: z.string().optional(),
       platform: PLATFORM_ENUM,
       contentType: z.enum(["text", "image", "video", "reel", "story", "carousel"]).default("text"),
-      contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).optional(),
+      contentPillar: PILLAR_ENUM.optional(),
       scheduledAt: z.string().optional(),
       scriptText: z.string().optional(),
       mediaUrl: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
       const post = await createContentPost({
         ...input,
         scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
@@ -220,15 +110,30 @@ export const postsRouter = router({
       scheduledAt: z.string().optional(),
       scriptText: z.string().optional(),
       mediaUrl: z.string().optional(),
-      contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).optional(),
+      contentPillar: PILLAR_ENUM.optional(),
       contentType: z.enum(["text", "image", "video", "reel", "story", "carousel"]).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, scheduledAt, ...rest } = input;
+      const existing = await getContentPostById(id);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
       const post = await updateContentPost(id, {
         ...rest,
         scheduledAt: scheduledAt ? new Date(scheduledAt) : undefined,
       });
+      // An edit is a (weak) preference signal — the original needed changing.
+      if (input.caption && existing.clientId && input.caption !== existing.caption) {
+        await createPreferenceSignal({
+          clientId: existing.clientId,
+          userId: ctx.user.id,
+          signalType: "edit",
+          targetType: "content_post",
+          targetId: id,
+          direction: "negative",
+          content: existing.caption,
+          reason: "Caption was edited before approval",
+        });
+      }
       return post;
     }),
 
@@ -244,7 +149,7 @@ export const postsRouter = router({
       id: z.number(),
       scheduledAt: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const post = await getContentPostById(input.id);
       if (!post) throw new TRPCError({ code: "NOT_FOUND" });
       const updated = await updateContentPost(input.id, {
@@ -253,9 +158,21 @@ export const postsRouter = router({
       });
       await recordAnalyticsEvent({
         postId: input.id,
+        clientId: post.clientId,
         platform: post.platform,
         eventType: "approved",
       });
+      if (post.clientId) {
+        await createPreferenceSignal({
+          clientId: post.clientId,
+          userId: ctx.user.id,
+          signalType: "post_approval",
+          targetType: "content_post",
+          targetId: post.id,
+          direction: "positive",
+          content: post.caption,
+        });
+      }
       return updated;
     }),
 
@@ -264,7 +181,7 @@ export const postsRouter = router({
       id: z.number(),
       reason: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const post = await getContentPostById(input.id);
       if (!post) throw new TRPCError({ code: "NOT_FOUND" });
       const updated = await updateContentPost(input.id, {
@@ -273,10 +190,107 @@ export const postsRouter = router({
       });
       await recordAnalyticsEvent({
         postId: input.id,
+        clientId: post.clientId,
         platform: post.platform,
         eventType: "rejected",
       });
+      if (post.clientId) {
+        await createPreferenceSignal({
+          clientId: post.clientId,
+          userId: ctx.user.id,
+          signalType: "post_rejection",
+          targetType: "content_post",
+          targetId: post.id,
+          direction: "negative",
+          content: post.caption,
+          reason: input.reason,
+        });
+      }
       return updated;
+    }),
+
+  /** Flag a post as a proven winner — feeds the learning loop and "next batch from winners". */
+  markWinner: protectedProcedure
+    .input(z.object({ id: z.number(), isWinner: z.boolean().default(true) }))
+    .mutation(async ({ ctx, input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      const updated = await updateContentPost(input.id, { isWinner: input.isWinner });
+      if (input.isWinner && post.clientId) {
+        await createPreferenceSignal({
+          clientId: post.clientId,
+          userId: ctx.user.id,
+          signalType: "winner",
+          targetType: "content_post",
+          targetId: post.id,
+          direction: "positive",
+          content: post.caption,
+        });
+      }
+      return updated;
+    }),
+
+  /**
+   * Generate a fresh take on an existing post — optionally for a different platform
+   * (e.g. turn a LinkedIn post into an email). The new post links back via parentPostId.
+   */
+  generateVariation: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      targetPlatform: PLATFORM_ENUM.optional(),
+      instructions: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!post.clientId) throw new TRPCError({ code: "BAD_REQUEST", message: "Post has no client assigned" });
+      const promptCtx = await loadPromptContext(post.clientId, { campaignId: post.campaignId });
+
+      const platform = (input.targetPlatform ?? post.platform) as Platform;
+      const { system, user } = buildPostPrompt(promptCtx, {
+        platform,
+        contentPillar: (post.contentPillar ?? undefined) as any,
+        topic: undefined,
+        extraInstructions: [
+          `Create a fresh variation of this existing post. Keep the core idea, change the angle and wording:`,
+          `"""${post.caption ?? post.title ?? ""}"""`,
+          input.targetPlatform && input.targetPlatform !== post.platform
+            ? `Adapt it fully to ${input.targetPlatform.replace(/_/g, " ")} conventions.`
+            : "Do not repeat sentences from the original.",
+          input.instructions ?? "",
+        ].filter(Boolean).join("\n"),
+      });
+
+      const response = await trackedInvokeLLM(
+        { messages: [{ role: "system", content: system }, { role: "user", content: user }] },
+        { clientId: post.clientId, userId: ctx.user.id, taskType: "generate_variation", summary: `variation of post ${post.id} → ${platform}` },
+      );
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
+      let parsed: { caption: string; hashtags: string; hook: string; scriptText?: string };
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" });
+      }
+
+      const created = await createContentPost({
+        clientId: post.clientId,
+        campaignId: post.campaignId,
+        parentPostId: post.id,
+        title: parsed.hook?.substring(0, 100),
+        caption: parsed.caption,
+        hashtags: parsed.hashtags,
+        scriptText: parsed.scriptText,
+        platform,
+        contentPillar: post.contentPillar,
+        status: "draft",
+        aiGenerated: true,
+        generationPrompt: user,
+        contentType: platform === "youtube" ? "video" : "text",
+      });
+      return created;
     }),
 
   submitForApproval: protectedProcedure
@@ -294,37 +308,34 @@ export const postsRouter = router({
 
   generateAI: protectedProcedure
     .input(z.object({
+      clientId: z.number(),
+      campaignId: z.number().optional(),
       platform: PLATFORM_ENUM,
-      contentPillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).default("strong_opinion"),
+      contentPillar: PILLAR_ENUM.default("strong_opinion"),
       topic: z.string().optional(),
       tone: z.string().optional(),
       autoSubmitForApproval: z.boolean().default(true),
     }))
-    .mutation(async ({ input }) => {
-      const promptKey = (input.platform === "linkedin_personal" || input.platform === "linkedin_company") ? input.platform : input.platform;
-      const systemPrompt = PLATFORM_PROMPTS[promptKey] ?? PLATFORM_PROMPTS["linkedin"];
-      const pillarContext = CONTENT_PILLAR_CONTEXT[input.contentPillar];
-
-      const userMessage = [
-        pillarContext,
-        input.topic ? `Topic/angle: ${input.topic}` : "Choose a compelling topic relevant to AI systems, business automation, or operational efficiency.",
-        input.tone ? `Tone: ${input.tone}` : "Tone: Strategic, calm, intelligent, direct.",
-        "Brand: Optentia — AI systems and automation operator for businesses. Not just an AI tool provider.",
-        "Return only valid JSON, no markdown fences.",
-      ].join("\n");
-
-      const response = await invokeLLM({
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage },
-        ],
+    .mutation(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
+      const promptCtx = await loadPromptContext(input.clientId, { campaignId: input.campaignId });
+      const { system, user } = buildPostPrompt(promptCtx, {
+        platform: input.platform,
+        contentPillar: input.contentPillar,
+        topic: input.topic,
+        tone: input.tone,
       });
+
+      const response = await trackedInvokeLLM(
+        { messages: [{ role: "system", content: system }, { role: "user", content: user }] },
+        { clientId: input.clientId, userId: ctx.user.id, taskType: "generate_post", summary: `${input.platform} / ${input.contentPillar}${input.topic ? ` / ${input.topic.slice(0, 60)}` : ""}` },
+      );
 
       const rawContent = response.choices[0]?.message?.content;
       const content = typeof rawContent === "string" ? rawContent : null;
       if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
 
-      let parsed: { caption: string; hashtags: string; hook: string; scriptText?: string };
+      let parsed: { caption: string; hashtags: string; hook: string; scriptText?: string; subject?: string };
       try {
         parsed = JSON.parse(content);
       } catch {
@@ -335,9 +346,9 @@ export const postsRouter = router({
       let imagePrompt: string | undefined;
       if (input.platform === "instagram" || input.platform === "facebook") {
         try {
-          imagePrompt = buildViralImagePrompt(parsed.caption ?? parsed.hook ?? "", input.platform);
-          const { size } = PLATFORM_IMAGE_BRIEF[input.platform];
-          const imgResult = await generateImage({ prompt: imagePrompt, size });
+          const img = buildImagePrompt(promptCtx, { caption: parsed.caption ?? parsed.hook ?? "", platform: input.platform });
+          imagePrompt = img.prompt;
+          const imgResult = await generateImage({ prompt: img.prompt, size: img.size });
           if (imgResult?.url) imageUrl = imgResult.url;
         } catch (imgErr) {
           console.error("[posts] Image generation failed (non-fatal):", imgErr);
@@ -345,7 +356,9 @@ export const postsRouter = router({
       }
 
       const post = await createContentPost({
-        title: parsed.hook?.substring(0, 100),
+        clientId: input.clientId,
+        campaignId: input.campaignId,
+        title: parsed.subject?.substring(0, 100) ?? parsed.hook?.substring(0, 100),
         caption: parsed.caption,
         hashtags: parsed.hashtags,
         scriptText: parsed.scriptText,
@@ -353,7 +366,7 @@ export const postsRouter = router({
         contentPillar: input.contentPillar,
         status: input.autoSubmitForApproval ? "pending_approval" : "draft",
         aiGenerated: true,
-        generationPrompt: userMessage,
+        generationPrompt: user,
         imageUrl,
         imagePrompt,
         contentType: input.platform === "youtube" ? "video" : (imageUrl ? "image" : "text"),
@@ -362,7 +375,7 @@ export const postsRouter = router({
       if (input.autoSubmitForApproval) {
         await notifyOwner({
           title: "New AI Content Pending Approval",
-          content: `AI generated a new ${input.platform} post ready for your review: "${parsed.hook?.substring(0, 80)}..."`,
+          content: `AI generated a new ${input.platform} post for ${promptCtx.client.name} ready for your review: "${parsed.hook?.substring(0, 80)}..."`,
         });
       }
 
@@ -386,6 +399,7 @@ export const postsRouter = router({
       });
       await recordAnalyticsEvent({
         postId: input.id,
+        clientId: post.clientId,
         platform: post.platform,
         eventType: "scheduled",
       });
@@ -400,13 +414,19 @@ export const postsRouter = router({
       if (post.status !== "approved" && post.status !== "scheduled" && post.status !== "failed") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Only approved or scheduled posts can be published" });
       }
+      if (isManualPlatform(post.platform)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${post.platform} is a manual channel — copy the content and send it through your ${post.platform} tool.`,
+        });
+      }
 
       const { getPlatformConnection } = await import("../db");
       const { publishToInstagram, publishToFacebook } = await import("../publishers/meta");
       const { publishToLinkedIn } = await import("../publishers/linkedin");
       const { publishYouTubeCommunityPost } = await import("../publishers/youtube");
 
-      const conn = await getPlatformConnection(post.platform);
+      const conn = await getPlatformConnection(post.platform, post.clientId);
       if (!conn?.accessToken) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -461,7 +481,7 @@ export const postsRouter = router({
 
       if (!result.success) {
         await updateContentPost(input.id, { status: "failed", publishError: result.error });
-        await recordAnalyticsEvent({ postId: input.id, platform: post.platform, eventType: "failed" });
+        await recordAnalyticsEvent({ postId: input.id, clientId: post.clientId, platform: post.platform, eventType: "failed" });
         await notifyOwner({
           title: `⚠️ Publish Failed: ${post.platform}`,
           content: `Failed to publish post "${post.title || caption.substring(0, 60)}" to ${post.platform}. Error: ${result.error ?? "Unknown error"}`,
@@ -475,7 +495,7 @@ export const postsRouter = router({
         externalPostId: result.externalPostId,
         publishError: null,
       });
-      await recordAnalyticsEvent({ postId: input.id, platform: post.platform, eventType: "published" });
+      await recordAnalyticsEvent({ postId: input.id, clientId: post.clientId, platform: post.platform, eventType: "published" });
       await notifyOwner({
         title: `✓ Post Published: ${post.platform}`,
         content: `Your ${post.platform} post "${post.title || caption.substring(0, 60)}..." was published successfully.`,
@@ -513,10 +533,16 @@ export const postsRouter = router({
     .input(z.object({
       caption: z.string().min(1),
       platform: PLATFORM_ENUM.optional(),
+      clientId: z.number().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const platform: PlatformKey = input.platform ?? "instagram";
-      const result = await safeGenerateForPlatform(input.caption, platform);
+      let promptCtx: PromptContext | null = null;
+      if (input.clientId) {
+        await assertClientAccess(ctx, input.clientId);
+        promptCtx = await loadPromptContext(input.clientId);
+      }
+      const result = await safeGenerateForPlatform(promptCtx, input.caption, platform);
       if (result.error || !result.url) {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -533,12 +559,15 @@ export const postsRouter = router({
    */
   quickPublish: protectedProcedure
     .input(z.object({
+      clientId: z.number(),
       caption: z.string().min(1),
       hashtags: z.string().optional(),
       imageUrl: z.string().optional(),
       platforms: z.array(PLATFORM_ENUM).min(1),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
+      const promptCtx = await loadPromptContext(input.clientId);
       const { getPlatformConnection } = await import("../db");
       const { publishToInstagram, publishToFacebook } = await import("../publishers/meta");
       const { publishToLinkedIn } = await import("../publishers/linkedin");
@@ -554,7 +583,11 @@ export const postsRouter = router({
       } else {
         await Promise.all(
           input.platforms.map(async (p) => {
-            platformImages[p] = await safeGenerateForPlatform(input.caption, p);
+            if (isManualPlatform(p)) {
+              platformImages[p] = {};
+              return;
+            }
+            platformImages[p] = await safeGenerateForPlatform(promptCtx, input.caption, p);
           }),
         );
       }
@@ -574,6 +607,26 @@ export const postsRouter = router({
         const imgUrl = imgEntry?.url;
 
         try {
+          if (isManualPlatform(platform)) {
+            // Manual channels: save the content as approved; the operator sends it themselves.
+            const post = await createContentPost({
+              clientId: input.clientId,
+              caption: input.caption,
+              hashtags: input.hashtags,
+              platform,
+              contentType: "text",
+              status: "approved",
+              aiGenerated: false,
+            });
+            results.push({
+              platform,
+              success: false,
+              postId: post?.id,
+              error: `${platform} is a manual channel — content saved to the queue for manual sending.`,
+            });
+            continue;
+          }
+
           if (platform === "instagram" && !imgUrl) {
             results.push({
               platform,
@@ -585,7 +638,7 @@ export const postsRouter = router({
             continue;
           }
 
-          const conn = await getPlatformConnection(platform);
+          const conn = await getPlatformConnection(platform, input.clientId);
           if (!conn?.accessToken) {
             results.push({
               platform,
@@ -596,6 +649,7 @@ export const postsRouter = router({
           }
 
           const post = await createContentPost({
+            clientId: input.clientId,
             caption: input.caption,
             hashtags: input.hashtags,
             platform,
@@ -603,7 +657,7 @@ export const postsRouter = router({
             status: "approved",
             aiGenerated: !userOverride && Boolean(imgUrl),
             imageUrl: imgUrl,
-            imagePrompt: !userOverride && imgUrl ? buildViralImagePrompt(input.caption, platform) : undefined,
+            imagePrompt: !userOverride && imgUrl ? buildImagePrompt(promptCtx, { caption: input.caption, platform }).prompt : undefined,
           });
           postId = post.id;
 
@@ -657,7 +711,7 @@ export const postsRouter = router({
               status: "failed",
               publishError: publishResult.error,
             });
-            await recordAnalyticsEvent({ postId: post.id, platform, eventType: "failed" });
+            await recordAnalyticsEvent({ postId: post.id, clientId: input.clientId, platform, eventType: "failed" });
             results.push({
               platform,
               success: false,
@@ -674,7 +728,7 @@ export const postsRouter = router({
             externalPostId: publishResult.externalPostId,
             publishError: null,
           });
-          await recordAnalyticsEvent({ postId: post.id, platform, eventType: "published" });
+          await recordAnalyticsEvent({ postId: post.id, clientId: input.clientId, platform, eventType: "published" });
           results.push({
             platform,
             success: true,
@@ -719,21 +773,22 @@ export const postsRouter = router({
   /** Step 1: Topic → 3 caption ideas in different tones. LLM-only, cheap. */
   generateCaptionIdeas: protectedProcedure
     .input(z.object({
+      clientId: z.number(),
       topic: z.string().min(1),
       platform: PLATFORM_ENUM.optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
+      const promptCtx = await loadPromptContext(input.clientId);
       const platform = input.platform ?? "instagram";
-      const platformBrief = PLATFORM_PROMPTS[platform] ?? PLATFORM_PROMPTS.instagram;
-      const prompt = `Generate 3 distinct caption ideas for a social media post about: "${input.topic}".
+      const prompt = `${buildBrandBlock(promptCtx)}
+
+Generate 3 distinct caption ideas for a ${platform.replace(/_/g, " ")} post about: "${input.topic}".
 
 Each caption must have a DIFFERENT angle:
 1. "Bold hook" — provocative one-line opener that stops scroll
 2. "Practical teach" — concrete how-to / framework / numbered insight
 3. "Story" — short personal narrative or client example
-
-Platform context:
-${platformBrief}
 
 Return ONLY valid JSON in this exact shape (no preamble, no markdown fence):
 {
@@ -743,10 +798,10 @@ Return ONLY valid JSON in this exact shape (no preamble, no markdown fence):
     { "tone": "Story", "caption": "...", "hashtags": "#tag1 #tag2 #tag3" }
   ]
 }`;
-      const response = await invokeLLM({
-        messages: [{ role: "user", content: prompt }],
-        maxTokens: 2000,
-      });
+      const response = await trackedInvokeLLM(
+        { messages: [{ role: "user", content: prompt }], maxTokens: 2000 },
+        { clientId: input.clientId, userId: ctx.user.id, taskType: "caption_ideas", summary: input.topic.slice(0, 80) },
+      );
       const raw = response.choices[0]?.message?.content ?? "";
       const cleaned = raw.replace(/^\`\`\`json\s*/i, "").replace(/\`\`\`\s*$/i, "").trim();
       let parsed: { ideas: Array<{ tone: string; caption: string; hashtags: string }> };
@@ -761,15 +816,23 @@ Return ONLY valid JSON in this exact shape (no preamble, no markdown fence):
   /** Step 2: Caption → 3 text-only visual concept descriptions. No image gen yet. */
   generateVisualConcepts: protectedProcedure
     .input(z.object({
+      clientId: z.number().optional(),
       caption: z.string().min(1),
       platform: PLATFORM_ENUM.optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const hook = extractHook(input.caption);
+      let brandStyle = "";
+      if (input.clientId) {
+        await assertClientAccess(ctx, input.clientId);
+        const promptCtx = await loadPromptContext(input.clientId);
+        const vs = promptCtx.brandProfile?.visualStyle?.trim();
+        if (vs) brandStyle = `\nBrand visual style to respect: ${vs}`;
+      }
       const prompt = `For this social media caption, design 3 DIFFERENT visual concepts that would each work as a stop-the-scroll graphic.
 
 Caption: "${input.caption}"
-Key hook (8-14 words): "${hook}"
+Key hook (8-14 words): "${hook}"${brandStyle}
 
 Each concept must use a DIFFERENT visual style:
 1. "Bold Typography" — high-contrast quote-graphic with the hook in large weight
@@ -786,10 +849,10 @@ Return ONLY valid JSON (no preamble, no markdown fence):
     { "styleName": "Documentary Photo", "description": "...", "colors": ["...", "...", "..."], "imagePrompt": "..." }
   ]
 }`;
-      const response = await invokeLLM({
-        messages: [{ role: "user", content: prompt }],
-        maxTokens: 2500,
-      });
+      const response = await trackedInvokeLLM(
+        { messages: [{ role: "user", content: prompt }], maxTokens: 2500 },
+        { clientId: input.clientId ?? null, userId: ctx.user.id, taskType: "visual_concepts", summary: hook.slice(0, 80) },
+      );
       const raw = response.choices[0]?.message?.content ?? "";
       const cleaned = raw.replace(/^\`\`\`json\s*/i, "").replace(/\`\`\`\s*$/i, "").trim();
       let parsed: { concepts: Array<{ styleName: string; description: string; colors: string[]; imagePrompt: string }> };
@@ -823,17 +886,20 @@ Return ONLY valid JSON (no preamble, no markdown fence):
   /** Wizard finalizer: create N posts (one per platform) from chosen caption + image. */
   createFromWizard: protectedProcedure
     .input(z.object({
+      clientId: z.number(),
       caption: z.string().min(1),
       hashtags: z.string().optional(),
       imageUrl: z.string().optional(),
       platforms: z.array(PLATFORM_ENUM).min(1),
-      pillar: z.enum(["strong_opinion", "practical_education", "documentary", "direct_promotion"]).optional(),
+      pillar: PILLAR_ENUM.optional(),
       status: z.enum(["draft", "pending_approval"]).default("draft"),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
       const results: Array<{ platform: string; postId: number }> = [];
       for (const platform of input.platforms) {
         const post = await createContentPost({
+          clientId: input.clientId,
           caption: input.caption,
           hashtags: input.hashtags,
           platform,

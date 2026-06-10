@@ -1,0 +1,388 @@
+You are working inside the existing repository:
+
+github.com/labs-cloud/optentia-content-automation
+
+The current app already has content generation, queue, scheduling, publishing paths, analytics events, platform connections, media, and HeyGen support.
+
+The goal is to redesign and refactor it into a premium, multi-client AI marketing operating system.
+
+Do not rewrite the entire app from scratch unless absolutely necessary.
+Preserve the existing React/Vite + Express/tRPC + Drizzle structure.
+
+# High-Level Goal
+
+Turn this from an Optentia-only content automation dashboard into a multi-client AI marketing operator with:
+
+- Premium Holo/Linear/iOS-inspired design.
+- Client/company workspaces.
+- Brand Operating Profiles.
+- Swipe-based brainstorm learning.
+- Campaign-based content generation.
+- Approval queue.
+- Calendar scheduler.
+- Analytics learning loop.
+- Mobile-first architecture for future iOS app.
+
+# Step 1 — Audit
+
+First audit the existing codebase.
+
+Identify:
+
+- Current routes.
+- Current schema.
+- Current tRPC routers.
+- Current prompt logic.
+- Current hardcoded Optentia references.
+- Current components/pages that should be reused.
+- Current components/pages that should be replaced.
+
+After the audit, create a short implementation plan before coding.
+
+# Step 2 — Design System Reset
+
+Create a premium app design system.
+
+Requirements:
+
+- Dark mode first.
+- Light mode compatible.
+- Premium card-based UI.
+- Holo/Linear-inspired smoothness.
+- iOS-style rounded cards.
+- Great spacing and typography.
+- Framer Motion if available.
+- Mobile responsive from the beginning.
+
+Create or refactor these components:
+
+- AppShell
+- Sidebar
+- TopBar
+- ClientSwitcher
+- PremiumCard
+- StatCard
+- SwipeDeck
+- IdeaCard
+- ContentPreviewCard
+- CampaignCard
+- ApprovalCard
+- BrandProfilePanel
+- BottomNav
+- MobileSheet
+- FloatingActionButton
+- AIThinkingState
+- EmptyState
+
+# Step 3 — Add Multi-Client Data Model
+
+Add Drizzle tables:
+
+- clients
+- client_brand_profiles
+- preference_signals
+- brainstorm_ideas
+- campaigns
+- campaign_content_items
+- content_performance_snapshots
+- model_runs
+
+Add clientId to existing content-related tables where missing:
+
+- content_posts
+- content_schedules
+- media_assets
+- analytics_events
+- heygen_requests
+- platform_connections
+
+Make sure all content, schedules, media, analytics, and platform connections are scoped to the selected client.
+
+# Step 4 — Build Client Workspace
+
+Add a Clients page.
+
+Features:
+
+- Create client.
+- Edit client.
+- Delete/archive client.
+- Select active client.
+- Add website URL.
+- Add industry.
+- Add offer/service.
+- Add audience.
+- Add description.
+
+Add ClientSwitcher in the main app shell.
+
+The app should always know which client is active.
+
+Initial seed/demo clients:
+
+- Optentia.
+- Current marketing client placeholder.
+
+# Step 5 — Build Brand Brain
+
+Add Brand Brain page.
+
+Features:
+
+- Generate Brand Operating Profile.
+- Edit profile fields.
+- Save profile.
+- Show brand summary.
+- Show voice/tone.
+- Show audience.
+- Show offers.
+- Show buyer pains.
+- Show proof points.
+- Show visual style.
+- Show CTA style.
+- Show forbidden phrases.
+- Show approved/rejected examples.
+
+Add backend route:
+
+- generateBrandProfile
+
+This should use client website, description, industry, offer, audience, and optional examples.
+
+# Step 6 — Refactor AI Prompts
+
+Remove hardcoded Optentia-only prompt behavior.
+
+All generation must use:
+
+- selected client
+- selected brand profile
+- selected campaign if available
+- preference signals
+- approved examples
+- rejected examples
+
+Keep support for platform-specific generation:
+
+- Instagram
+- LinkedIn personal
+- LinkedIn company
+- Facebook
+- YouTube
+- Email
+- WhatsApp
+
+# Step 7 — Build Swipe Brainstorm
+
+Add Brainstorm page.
+
+Core UX:
+
+- User selects active client.
+- User clicks Generate Ideas.
+- AI generates idea cards.
+- User swipes right to like.
+- User swipes left to reject.
+- User swipes up to save for campaign.
+- Tap opens detail.
+- Each action saves a preference signal.
+
+Backend routes:
+
+- generateBrainstormIdeas
+- savePreferenceSignal
+- getBrainstormIdeas
+- updateBrainstormIdea
+
+Idea types:
+
+- Post hook.
+- Campaign angle.
+- Reel idea.
+- Carousel idea.
+- Email angle.
+- WhatsApp message.
+- Ad concept.
+- Visual concept.
+- Offer angle.
+
+The UI should be extremely smooth and fun.
+
+This is a core differentiator.
+
+# Step 8 — Build Campaign System
+
+Add Campaigns page.
+
+Features:
+
+- Create campaign.
+- Select goal.
+- Select duration.
+- Select platforms.
+- Select liked brainstorm ideas.
+- Generate campaign thesis.
+- Generate campaign content plan.
+- Generate content assets.
+
+Campaign goals:
+
+- Awareness.
+- Leads.
+- Authority.
+- Offer push.
+- Re-engagement.
+- Education.
+- Testimonial/proof.
+
+Backend routes:
+
+- createCampaign
+- generateCampaign
+- generateContentFromCampaign
+- getCampaigns
+- getCampaignById
+
+Campaign detail page should show:
+
+- Campaign thesis.
+- Platforms.
+- Content calendar.
+- Generated posts.
+- Status.
+- Performance summary.
+
+# Step 9 — Upgrade Content Queue
+
+Refactor existing content queue into a premium approval workspace.
+
+Features:
+
+- Filter by client.
+- Filter by campaign.
+- Filter by platform.
+- Filter by status.
+- Card-based preview.
+- Approve.
+- Reject.
+- Regenerate.
+- Edit.
+- Schedule.
+- Publish.
+- Save as winner.
+- Create variation.
+- Turn into different format.
+
+Must be mobile responsive.
+
+# Step 10 — Upgrade Calendar
+
+Improve calendar UI.
+
+Features:
+
+- Client filter.
+- Campaign filter.
+- Platform filter.
+- Status filter.
+- Better content cards.
+- Recommended posting times.
+- Drag/reschedule if feasible.
+- Empty state that suggests generating a campaign.
+
+# Step 11 — Add Analytics Learning
+
+Add performance snapshots.
+
+Build analytics page that shows:
+
+- Top performing posts.
+- Top hooks.
+- Top content pillars.
+- Top platforms.
+- Best posting times.
+- Approval bottlenecks.
+- Publishing activity.
+- AI recommendations.
+
+Add backend route:
+
+- generateWeeklyReport
+
+Weekly report should include:
+
+- What worked.
+- What failed.
+- What to repeat.
+- What to stop.
+- What to repurpose.
+- What to generate next.
+
+# Step 12 — Model Run Tracking
+
+Add model_runs tracking.
+
+Track:
+
+- clientId
+- taskType
+- provider
+- model
+- inputTokens
+- outputTokens
+- estimatedCost
+- latencyMs
+- status
+- qualityRating
+
+Use this for cost control and future model routing.
+
+# Step 13 — Mobile/iOS Readiness
+
+Do not build the native iOS app yet unless requested.
+
+But structure the web app so it can become an Expo/React Native app later.
+
+Requirements:
+
+- Shared API layer.
+- Shared types.
+- Design tokens separated clearly.
+- Mobile-first components.
+- SwipeDeck logic abstracted.
+- Avoid web-only assumptions where possible.
+
+Future iOS app should focus on:
+
+- Today queue.
+- Swipe brainstorm.
+- Approvals.
+- Quick edits.
+- Calendar preview.
+- Weekly report.
+
+# Step 14 — Quality Standards
+
+Before finishing:
+
+- Run typecheck.
+- Run build.
+- Fix lint/type errors.
+- Ensure no hardcoded Optentia-only generation remains except demo seed data.
+- Ensure app works with at least two clients.
+- Ensure content is scoped by clientId.
+- Ensure UI is responsive.
+- Ensure old routes still work or are gracefully redirected.
+
+# Final Deliverable
+
+Deliver:
+
+1. Summary of what changed.
+2. New schema changes.
+3. New pages/components.
+4. New routes.
+5. Remaining TODOs.
+6. Commands to run locally.
+7. Any migration steps needed.
+

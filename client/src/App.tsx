@@ -14,12 +14,22 @@ import Analytics from "./pages/Analytics";
 import HeyGen from "./pages/HeyGen";
 import Platforms from "./pages/Platforms";
 import Schedules from "./pages/Schedules";
+import Clients from "./pages/Clients";
+import BrandBrain from "./pages/BrandBrain";
+import Brainstorm from "./pages/Brainstorm";
+import Campaigns from "./pages/Campaigns";
+import CampaignDetail from "./pages/CampaignDetail";
 
 function Router() {
   return (
     <DashboardLayout>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/clients" component={Clients} />
+        <Route path="/brand" component={BrandBrain} />
+        <Route path="/brainstorm" component={Brainstorm} />
+        <Route path="/campaigns" component={Campaigns} />
+        <Route path="/campaigns/:id" component={CampaignDetail} />
         <Route path="/queue" component={ContentQueue} />
         <Route path="/calendar" component={ContentCalendar} />
         <Route path="/library" component={ContentLibrary} />
