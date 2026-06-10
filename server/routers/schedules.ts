@@ -10,16 +10,23 @@ import {
   getContentSchedules,
   updateContentSchedule,
 } from "../db";
+import { assertClientAccess } from "../_core/clientScope";
+import { PLATFORMS } from "@shared/platforms";
 import { protectedProcedure, router } from "../_core/trpc";
+
+const PLATFORM_ENUM = z.enum(PLATFORMS);
 
 function computeNextRunAt(cronExpr: string): Date {
   return parseExpression(cronExpr, { utc: true }).next().toDate();
 }
 
 export const schedulesRouter = router({
-  list: protectedProcedure.query(async () => {
-    return getContentSchedules();
-  }),
+  list: protectedProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
+      return getContentSchedules(input.clientId);
+    }),
 
   get: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -32,25 +39,18 @@ export const schedulesRouter = router({
   create: protectedProcedure
     .input(
       z.object({
+        clientId: z.number(),
         name: z.string(),
         description: z.string().optional(),
         cron: z.string(),
-        platforms: z.array(
-          z.enum([
-            "instagram",
-            "linkedin",
-            "linkedin_personal",
-            "linkedin_company",
-            "facebook",
-            "youtube",
-          ])
-        ),
+        platforms: z.array(PLATFORM_ENUM),
         postsPerRun: z.number().default(1),
         contentPillars: z.array(z.string()).optional(),
         generationPrompt: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
       let nextRunAt: Date | undefined;
       try {
         nextRunAt = computeNextRunAt(input.cron);
@@ -59,6 +59,7 @@ export const schedulesRouter = router({
       }
 
       const schedule = await createContentSchedule({
+        clientId: input.clientId,
         name: input.name,
         description: input.description,
         cron: input.cron,
@@ -81,18 +82,7 @@ export const schedulesRouter = router({
         name: z.string().optional(),
         description: z.string().optional(),
         cron: z.string().optional(),
-        platforms: z
-          .array(
-            z.enum([
-              "instagram",
-              "linkedin",
-              "linkedin_personal",
-              "linkedin_company",
-              "facebook",
-              "youtube",
-            ])
-          )
-          .optional(),
+        platforms: z.array(PLATFORM_ENUM).optional(),
         postsPerRun: z.number().optional(),
         contentPillars: z.array(z.string()).optional(),
         generationPrompt: z.string().optional(),

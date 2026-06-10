@@ -2,18 +2,34 @@ import { and, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   analyticsEvents,
+  brainstormIdeas,
+  campaignContentItems,
+  campaigns,
+  clientBrandProfiles,
+  clients,
+  contentPerformanceSnapshots,
   contentPosts,
   contentSchedules,
   heygenRequests,
   InsertAnalyticsEvent,
+  InsertBrainstormIdea,
+  InsertCampaign,
+  InsertCampaignContentItem,
+  InsertClient,
+  InsertClientBrandProfile,
+  InsertContentPerformanceSnapshot,
   InsertContentPost,
   InsertContentSchedule,
   InsertHeygenRequest,
   InsertMediaAsset,
+  InsertModelRun,
   InsertPlatformConnection,
+  InsertPreferenceSignal,
   InsertUser,
   mediaAssets,
+  modelRuns,
   platformConnections,
+  preferenceSignals,
   users,
 } from "../drizzle/schema";
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -96,41 +112,59 @@ export async function updateUserPassword(openId: string, passwordHash: string) {
 
 // ─── Platform Connections ─────────────────────────────────────────────────────
 
-export async function getPlatformConnections() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(platformConnections).orderBy(platformConnections.platform);
+/**
+ * Connections are scoped per client. A connection with `clientId = null` is a
+ * legacy/global row (pre-multi-client); it only matches when no clientId filter
+ * is given. Credentials must NEVER leak across clients, so when a clientId is
+ * provided we filter strictly on it.
+ */
+function platformConnectionScope(platform: string, clientId?: number | null) {
+  const platformCond = eq(platformConnections.platform, platform as any);
+  if (clientId === undefined || clientId === null) return platformCond;
+  return and(platformCond, eq(platformConnections.clientId, clientId));
 }
 
-export async function getPlatformConnection(platform: string) {
+export async function getPlatformConnections(clientId?: number | null) {
+  const db = await getDb();
+  if (!db) return [];
+  if (clientId === undefined || clientId === null) {
+    return db.select().from(platformConnections).orderBy(platformConnections.platform);
+  }
+  return db.select().from(platformConnections)
+    .where(eq(platformConnections.clientId, clientId))
+    .orderBy(platformConnections.platform);
+}
+
+export async function getPlatformConnection(platform: string, clientId?: number | null) {
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(platformConnections)
-    .where(eq(platformConnections.platform, platform as any)).limit(1);
+    .where(platformConnectionScope(platform, clientId)).limit(1);
   return result[0];
 }
 
 export async function upsertPlatformConnection(data: InsertPlatformConnection) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");
-  const existing = await getPlatformConnection(data.platform);
+  const scope = platformConnectionScope(data.platform, data.clientId);
+  const existing = (await db.select().from(platformConnections).where(scope).limit(1))[0];
   if (existing) {
     await db.update(platformConnections)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(platformConnections.platform, data.platform));
-    return (await db.select().from(platformConnections).where(eq(platformConnections.platform, data.platform)).limit(1))[0];
+      .where(eq(platformConnections.id, existing.id));
+    return (await db.select().from(platformConnections).where(eq(platformConnections.id, existing.id)).limit(1))[0];
   } else {
     await db.insert(platformConnections).values(data);
-    return (await db.select().from(platformConnections).where(eq(platformConnections.platform, data.platform)).limit(1))[0];
+    return (await db.select().from(platformConnections).where(scope).orderBy(desc(platformConnections.id)).limit(1))[0];
   }
 }
 
-export async function updatePlatformStatus(platform: string, status: "connected" | "disconnected" | "error", errorMessage?: string) {
+export async function updatePlatformStatus(platform: string, status: "connected" | "disconnected" | "error", errorMessage?: string, clientId?: number | null) {
   const db = await getDb();
   if (!db) return;
   await db.update(platformConnections)
     .set({ status, errorMessage: errorMessage ?? null, lastCheckedAt: new Date(), updatedAt: new Date() })
-    .where(eq(platformConnections.platform, platform as any));
+    .where(platformConnectionScope(platform, clientId));
 }
 
 // ─── Content Posts ────────────────────────────────────────────────────────────
@@ -138,6 +172,8 @@ export async function updatePlatformStatus(platform: string, status: "connected"
 export async function getContentPosts(filters?: {
   status?: string;
   platform?: string;
+  clientId?: number;
+  campaignId?: number;
   limit?: number;
   offset?: number;
 }) {
@@ -146,6 +182,8 @@ export async function getContentPosts(filters?: {
   const conditions = [];
   if (filters?.status) conditions.push(eq(contentPosts.status, filters.status as any));
   if (filters?.platform) conditions.push(eq(contentPosts.platform, filters.platform as any));
+  if (filters?.clientId !== undefined) conditions.push(eq(contentPosts.clientId, filters.clientId));
+  if (filters?.campaignId !== undefined) conditions.push(eq(contentPosts.campaignId, filters.campaignId));
   let query = db.select().from(contentPosts).orderBy(desc(contentPosts.createdAt));
   if (conditions.length > 0) query = query.where(and(...conditions)) as any;
   if (filters?.limit) query = query.limit(filters.limit) as any;
@@ -193,20 +231,26 @@ export async function getScheduledPostsDue() {
     ));
 }
 
-export async function getPendingApprovalPosts() {
+export async function getPendingApprovalPosts(clientId?: number) {
   const db = await getDb();
   if (!db) return [];
+  const statusCond = eq(contentPosts.status, "pending_approval");
   return db.select().from(contentPosts)
-    .where(eq(contentPosts.status, "pending_approval"))
+    .where(clientId === undefined ? statusCond : and(statusCond, eq(contentPosts.clientId, clientId)))
     .orderBy(desc(contentPosts.createdAt));
 }
 
 // ─── Content Schedules ────────────────────────────────────────────────────────
 
-export async function getContentSchedules() {
+export async function getContentSchedules(clientId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(contentSchedules).orderBy(contentSchedules.name);
+  if (clientId === undefined) {
+    return db.select().from(contentSchedules).orderBy(contentSchedules.name);
+  }
+  return db.select().from(contentSchedules)
+    .where(eq(contentSchedules.clientId, clientId))
+    .orderBy(contentSchedules.name);
 }
 
 export async function getActiveSchedulesDue() {
@@ -259,11 +303,14 @@ export async function deleteContentSchedule(id: number) {
 
 // ─── Media Assets ─────────────────────────────────────────────────────────────
 
-export async function getMediaAssets(type?: string) {
+export async function getMediaAssets(type?: string, clientId?: number) {
   const db = await getDb();
   if (!db) return [];
-  if (type) {
-    return db.select().from(mediaAssets).where(eq(mediaAssets.type, type as any)).orderBy(desc(mediaAssets.createdAt));
+  const conditions = [];
+  if (type) conditions.push(eq(mediaAssets.type, type as any));
+  if (clientId !== undefined) conditions.push(eq(mediaAssets.clientId, clientId));
+  if (conditions.length > 0) {
+    return db.select().from(mediaAssets).where(and(...conditions)).orderBy(desc(mediaAssets.createdAt));
   }
   return db.select().from(mediaAssets).orderBy(desc(mediaAssets.createdAt));
 }
@@ -290,16 +337,27 @@ export async function recordAnalyticsEvent(data: InsertAnalyticsEvent) {
   await db.insert(analyticsEvents).values(data);
 }
 
-export async function getAnalyticsSummary() {
+export async function getAnalyticsSummary(clientId?: number) {
   const db = await getDb();
   if (!db) return { total: 0, published: 0, scheduled: 0, pending: 0, rejected: 0, failed: 0 };
+  const scoped = (cond?: ReturnType<typeof eq>) => {
+    const conditions = [];
+    if (cond) conditions.push(cond);
+    if (clientId !== undefined) conditions.push(eq(contentPosts.clientId, clientId));
+    return conditions.length > 0 ? and(...conditions) : undefined;
+  };
+  const count = (cond?: ReturnType<typeof eq>) => {
+    const where = scoped(cond);
+    const base = db.select({ count: sql<number>`count(*)` }).from(contentPosts);
+    return where ? base.where(where) : base;
+  };
   const [total, published, scheduled, pending, rejected, failed] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` }).from(contentPosts),
-    db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.status, "published")),
-    db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.status, "scheduled")),
-    db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.status, "pending_approval")),
-    db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.status, "rejected")),
-    db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.status, "failed")),
+    count(),
+    count(eq(contentPosts.status, "published")),
+    count(eq(contentPosts.status, "scheduled")),
+    count(eq(contentPosts.status, "pending_approval")),
+    count(eq(contentPosts.status, "rejected")),
+    count(eq(contentPosts.status, "failed")),
   ]);
   return {
     total: Number(total[0]?.count ?? 0),
@@ -311,15 +369,17 @@ export async function getAnalyticsSummary() {
   };
 }
 
-export async function getAnalyticsByPlatform() {
+export async function getAnalyticsByPlatform(clientId?: number) {
   const db = await getDb();
   if (!db) return [];
-  const platforms = ["instagram", "linkedin", "facebook", "youtube"] as const;
+  const platforms = ["instagram", "linkedin", "facebook", "youtube", "email", "whatsapp"] as const;
+  const withClient = (cond: any) =>
+    clientId === undefined ? cond : and(cond, eq(contentPosts.clientId, clientId));
   const results = await Promise.all(platforms.map(async (platform) => {
     const [total, published, scheduled] = await Promise.all([
-      db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(eq(contentPosts.platform, platform)),
-      db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(and(eq(contentPosts.platform, platform), eq(contentPosts.status, "published"))),
-      db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(and(eq(contentPosts.platform, platform), eq(contentPosts.status, "scheduled"))),
+      db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(withClient(eq(contentPosts.platform, platform))),
+      db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(withClient(and(eq(contentPosts.platform, platform), eq(contentPosts.status, "published")))),
+      db.select({ count: sql<number>`count(*)` }).from(contentPosts).where(withClient(and(eq(contentPosts.platform, platform), eq(contentPosts.status, "scheduled")))),
     ]);
     return {
       platform,
@@ -331,36 +391,48 @@ export async function getAnalyticsByPlatform() {
   return results;
 }
 
-export async function getRecentActivity(limit = 20) {
+export async function getRecentActivity(limit = 20, clientId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(analyticsEvents).orderBy(desc(analyticsEvents.recordedAt)).limit(limit);
+  if (clientId === undefined) {
+    return db.select().from(analyticsEvents).orderBy(desc(analyticsEvents.recordedAt)).limit(limit);
+  }
+  return db.select().from(analyticsEvents)
+    .where(eq(analyticsEvents.clientId, clientId))
+    .orderBy(desc(analyticsEvents.recordedAt)).limit(limit);
 }
 
-export async function getPublishedPostsOverTime() {
+export async function getPublishedPostsOverTime(clientId?: number) {
   const db = await getDb();
   if (!db) return [];
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const conditions = [
+    eq(contentPosts.status, "published"),
+    gte(contentPosts.publishedAt, thirtyDaysAgo),
+  ];
+  if (clientId !== undefined) conditions.push(eq(contentPosts.clientId, clientId));
   return db.select({
     date: sql<string>`DATE(publishedAt)`,
     count: sql<number>`count(*)`,
     platform: contentPosts.platform,
   }).from(contentPosts)
-    .where(and(
-      eq(contentPosts.status, "published"),
-      gte(contentPosts.publishedAt, thirtyDaysAgo)
-    ))
+    .where(and(...conditions))
     .groupBy(sql`DATE(publishedAt)`, contentPosts.platform)
     .orderBy(sql`DATE(publishedAt)`);
 }
 
 // ─── HeyGen ───────────────────────────────────────────────────────────────────
 
-export async function getHeygenRequests() {
+export async function getHeygenRequests(clientId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(heygenRequests).orderBy(desc(heygenRequests.createdAt));
+  if (clientId === undefined) {
+    return db.select().from(heygenRequests).orderBy(desc(heygenRequests.createdAt));
+  }
+  return db.select().from(heygenRequests)
+    .where(eq(heygenRequests.clientId, clientId))
+    .orderBy(desc(heygenRequests.createdAt));
 }
 
 export async function getHeygenRequestById(id: number) {
@@ -383,4 +455,266 @@ export async function updateHeygenRequest(id: number, data: Partial<InsertHeygen
   if (!db) throw new Error("DB unavailable");
   await db.update(heygenRequests).set({ ...data, updatedAt: new Date() }).where(eq(heygenRequests.id, id));
   return getHeygenRequestById(id);
+}
+
+// ─── Clients ──────────────────────────────────────────────────────────────────
+
+export async function getClients(opts?: { userId?: number; includeArchived?: boolean }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [];
+  if (opts?.userId !== undefined) conditions.push(eq(clients.userId, opts.userId));
+  if (!opts?.includeArchived) conditions.push(sql`${clients.status} != 'archived'`);
+  if (conditions.length > 0) {
+    return db.select().from(clients).where(and(...conditions)).orderBy(clients.name);
+  }
+  return db.select().from(clients).orderBy(clients.name);
+}
+
+export async function getClientById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(clients).where(eq(clients.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getClientByName(name: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(clients).where(eq(clients.name, name)).limit(1);
+  return result[0];
+}
+
+export async function createClient(data: InsertClient) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(clients).values(data);
+  const result = await db.select().from(clients).orderBy(desc(clients.id)).limit(1);
+  return result[0];
+}
+
+export async function updateClient(id: number, data: Partial<InsertClient>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(clients).set({ ...data, updatedAt: new Date() }).where(eq(clients.id, id));
+  return getClientById(id);
+}
+
+// ─── Client Brand Profiles ────────────────────────────────────────────────────
+
+export async function getBrandProfileByClientId(clientId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(clientBrandProfiles)
+    .where(eq(clientBrandProfiles.clientId, clientId)).limit(1);
+  return result[0];
+}
+
+export async function upsertBrandProfile(clientId: number, data: Partial<InsertClientBrandProfile>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const existing = await getBrandProfileByClientId(clientId);
+  if (existing) {
+    await db.update(clientBrandProfiles)
+      .set({ ...data, clientId, updatedAt: new Date() })
+      .where(eq(clientBrandProfiles.id, existing.id));
+  } else {
+    await db.insert(clientBrandProfiles).values({ ...data, clientId });
+  }
+  return getBrandProfileByClientId(clientId);
+}
+
+// ─── Preference Signals ───────────────────────────────────────────────────────
+
+export async function createPreferenceSignal(data: InsertPreferenceSignal) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(preferenceSignals).values(data);
+}
+
+export async function getPreferenceSignals(clientId: number, opts?: { limit?: number; direction?: "positive" | "negative" }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(preferenceSignals.clientId, clientId)];
+  if (opts?.direction) conditions.push(eq(preferenceSignals.direction, opts.direction));
+  return db.select().from(preferenceSignals)
+    .where(and(...conditions))
+    .orderBy(desc(preferenceSignals.createdAt))
+    .limit(opts?.limit ?? 50);
+}
+
+// ─── Brainstorm Ideas ─────────────────────────────────────────────────────────
+
+export async function getBrainstormIdeas(clientId: number, opts?: { status?: string; campaignId?: number; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(brainstormIdeas.clientId, clientId)];
+  if (opts?.status) conditions.push(eq(brainstormIdeas.status, opts.status as any));
+  if (opts?.campaignId !== undefined) conditions.push(eq(brainstormIdeas.campaignId, opts.campaignId));
+  return db.select().from(brainstormIdeas)
+    .where(and(...conditions))
+    .orderBy(desc(brainstormIdeas.createdAt))
+    .limit(opts?.limit ?? 100);
+}
+
+export async function getBrainstormIdeaById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(brainstormIdeas).where(eq(brainstormIdeas.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createBrainstormIdeas(rows: InsertBrainstormIdea[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  if (rows.length === 0) return [];
+  await db.insert(brainstormIdeas).values(rows);
+  const clientId = rows[0].clientId;
+  return db.select().from(brainstormIdeas)
+    .where(eq(brainstormIdeas.clientId, clientId))
+    .orderBy(desc(brainstormIdeas.id))
+    .limit(rows.length);
+}
+
+export async function updateBrainstormIdea(id: number, data: Partial<InsertBrainstormIdea>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(brainstormIdeas).set({ ...data, updatedAt: new Date() }).where(eq(brainstormIdeas.id, id));
+  return getBrainstormIdeaById(id);
+}
+
+// ─── Campaigns ────────────────────────────────────────────────────────────────
+
+export async function getCampaigns(clientId: number, opts?: { status?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(campaigns.clientId, clientId)];
+  if (opts?.status) conditions.push(eq(campaigns.status, opts.status as any));
+  return db.select().from(campaigns)
+    .where(and(...conditions))
+    .orderBy(desc(campaigns.createdAt));
+}
+
+export async function getCampaignById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createCampaign(data: InsertCampaign) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(campaigns).values(data);
+  const result = await db.select().from(campaigns).orderBy(desc(campaigns.id)).limit(1);
+  return result[0];
+}
+
+export async function updateCampaign(id: number, data: Partial<InsertCampaign>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(campaigns).set({ ...data, updatedAt: new Date() }).where(eq(campaigns.id, id));
+  return getCampaignById(id);
+}
+
+export async function getCampaignContentItems(campaignId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(campaignContentItems)
+    .where(eq(campaignContentItems.campaignId, campaignId))
+    .orderBy(campaignContentItems.plannedDate);
+}
+
+export async function getCampaignContentItemById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(campaignContentItems).where(eq(campaignContentItems.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createCampaignContentItems(rows: InsertCampaignContentItem[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  if (rows.length === 0) return [];
+  await db.insert(campaignContentItems).values(rows);
+  return getCampaignContentItems(rows[0].campaignId);
+}
+
+export async function updateCampaignContentItem(id: number, data: Partial<InsertCampaignContentItem>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(campaignContentItems).set({ ...data, updatedAt: new Date() }).where(eq(campaignContentItems.id, id));
+  return getCampaignContentItemById(id);
+}
+
+// ─── Content Performance Snapshots ────────────────────────────────────────────
+
+export async function createPerformanceSnapshot(data: InsertContentPerformanceSnapshot) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.insert(contentPerformanceSnapshots).values(data);
+}
+
+export async function getPerformanceSnapshots(clientId: number, opts?: { contentPostId?: number; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(contentPerformanceSnapshots.clientId, clientId)];
+  if (opts?.contentPostId !== undefined) conditions.push(eq(contentPerformanceSnapshots.contentPostId, opts.contentPostId));
+  return db.select().from(contentPerformanceSnapshots)
+    .where(and(...conditions))
+    .orderBy(desc(contentPerformanceSnapshots.capturedAt))
+    .limit(opts?.limit ?? 200);
+}
+
+// ─── Model Runs ───────────────────────────────────────────────────────────────
+
+export async function createModelRun(data: InsertModelRun) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(modelRuns).values(data);
+}
+
+export async function getModelRunSummary(clientId?: number) {
+  const db = await getDb();
+  if (!db) return { runs: 0, inputTokens: 0, outputTokens: 0, estimatedCostMicros: 0 };
+  const base = db.select({
+    runs: sql<number>`count(*)`,
+    inputTokens: sql<number>`coalesce(sum(inputTokens), 0)`,
+    outputTokens: sql<number>`coalesce(sum(outputTokens), 0)`,
+    estimatedCostMicros: sql<number>`coalesce(sum(estimatedCostMicros), 0)`,
+  }).from(modelRuns);
+  const result = clientId === undefined
+    ? await base
+    : await base.where(eq(modelRuns.clientId, clientId));
+  return {
+    runs: Number(result[0]?.runs ?? 0),
+    inputTokens: Number(result[0]?.inputTokens ?? 0),
+    outputTokens: Number(result[0]?.outputTokens ?? 0),
+    estimatedCostMicros: Number(result[0]?.estimatedCostMicros ?? 0),
+  };
+}
+
+export async function getModelRuns(clientId?: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  if (clientId === undefined) {
+    return db.select().from(modelRuns).orderBy(desc(modelRuns.createdAt)).limit(limit);
+  }
+  return db.select().from(modelRuns)
+    .where(eq(modelRuns.clientId, clientId))
+    .orderBy(desc(modelRuns.createdAt)).limit(limit);
+}
+
+// ─── Backfill (legacy single-tenant rows → default client) ────────────────────
+
+/** Assign all legacy rows (clientId IS NULL) to the given client. Idempotent. */
+export async function backfillClientId(clientId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  await db.update(contentPosts).set({ clientId }).where(isNull(contentPosts.clientId));
+  await db.update(contentSchedules).set({ clientId }).where(isNull(contentSchedules.clientId));
+  await db.update(mediaAssets).set({ clientId }).where(isNull(mediaAssets.clientId));
+  await db.update(analyticsEvents).set({ clientId }).where(isNull(analyticsEvents.clientId));
+  await db.update(heygenRequests).set({ clientId }).where(isNull(heygenRequests.clientId));
+  await db.update(platformConnections).set({ clientId }).where(isNull(platformConnections.clientId));
 }

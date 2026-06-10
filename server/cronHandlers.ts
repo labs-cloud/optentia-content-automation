@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 const { parseExpression } = require("cron-parser") as typeof import("cron-parser");
-import { invokeLLM } from "./_core/llm";
+import { trackedInvokeLLM } from "./_core/trackedLlm";
 import { generateImage } from "./_core/imageGeneration";
 import { notifyOwner } from "./_core/notification";
 import { ENV } from "./_core/env";
@@ -16,6 +16,13 @@ import {
   updateContentPost,
   updateContentSchedule,
 } from "./db";
+import {
+  buildImagePrompt,
+  buildPostPrompt,
+  loadPromptContext,
+  type PromptContext,
+} from "./promptBuilder";
+import { CONTENT_PILLARS, isManualPlatform, type ContentPillar, type Platform } from "@shared/platforms";
 import { publishToInstagram, publishToFacebook } from "./publishers/meta";
 import { publishToLinkedIn } from "./publishers/linkedin";
 import { publishYouTubeCommunityPost } from "./publishers/youtube";
@@ -29,83 +36,6 @@ function computeNextRunAt(cronExpr: string): Date {
   return parseExpression(cronExpr, { utc: true }).next().toDate();
 }
 
-// ─── Platform Prompts ─────────────────────────────────────────────────────────
-
-const PLATFORM_PROMPTS: Record<string, string> = {
-  instagram: `You are an expert Instagram content creator for Optentia — an AI systems and automation operator for businesses.
-
-Will Hershey is the founder and face of this account. Audience: business owners who want to implement AI.
-
-Write a high-performing Instagram post that:
-- Opens with a bold, scroll-stopping hook (under 125 characters before "more")
-- Delivers a sharp insight on AI systems, automation, or business operations (150-300 words)
-- Uses direct, intelligent language — no hype, no buzzwords
-- Closes with a specific CTA (e.g., "DM me 'SYSTEM'" or "Link in bio")
-- Includes 15-20 targeted hashtags in the hashtags field
-
-Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  linkedin: `You are a LinkedIn ghostwriter for Will Hershey, founder of Optentia — an AI systems and automation operator for businesses.
-
-Write a personal LinkedIn post that:
-- Opens with a single punchy line that makes people stop scrolling
-- Shares a genuine perspective from operating an AI automation business (200-400 words)
-- Writes in first person, conversational but authoritative
-- Ends with a clear next step or question
-- Includes 3-5 strategic hashtags
-
-Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  linkedin_personal: `You are a LinkedIn ghostwriter for Will Hershey, founder of Optentia — an AI systems and automation operator for businesses.
-
-Write a personal LinkedIn post that:
-- Opens with a single punchy line that makes people stop scrolling
-- Shares a genuine first-person perspective on AI, automation, or business building (200-400 words)
-- Writes in first person — direct and confident, not corporate
-- Ends with a clear insight or question to drive comments
-- Includes 3-5 strategic hashtags
-
-Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  linkedin_company: `You are a LinkedIn content strategist for Optentia, an AI systems and automation operator for businesses.
-
-Write a company LinkedIn post that:
-- Opens with a bold business insight or data point
-- Establishes Optentia's authority in AI systems and automation (200-400 words)
-- Uses confident, professional brand voice — not generic corporate speak
-- Ends with a clear value proposition or CTA for business owners
-- Includes 3-5 industry hashtags
-
-Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  facebook: `You are a Facebook content creator for Optentia — an AI systems and automation operator for businesses.
-
-Write a discussion-driving Facebook post that:
-- Opens with a controversial or counterintuitive statement about AI or business
-- Develops the idea with specific examples (100-250 words)
-- Ends with a direct question that invites business owners to respond
-- Includes 3-5 relevant hashtags
-
-Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "..."}`,
-
-  youtube: `You are a YouTube content strategist for Optentia — an AI systems and automation operator for businesses.
-
-Write a YouTube video package that:
-- Creates a compelling, search-optimized title
-- Writes a hook script for the first 30 seconds (what viewers will learn and why it matters now)
-- Writes an optimized video description (150-300 words) covering the topic with a timestamp placeholder
-- Includes 10-15 SEO-optimized tags
-
-Return valid JSON only: {"caption": "...", "hashtags": "...", "hook": "...", "scriptText": "..."}`,
-};
-
-const CONTENT_PILLARS = [
-  "strong_opinion",
-  "practical_education",
-  "documentary",
-  "direct_promotion",
-] as const;
-
 // ─── Core Logic (no req/res — callable from any handler) ──────────────────────
 
 async function runGenerateContent(): Promise<{
@@ -117,6 +47,19 @@ async function runGenerateContent(): Promise<{
   const allPostIds: number[] = [];
 
   for (const schedule of dueSchedules) {
+    if (!schedule.clientId) {
+      console.error(`[cron] Schedule ${schedule.id} ("${schedule.name}") has no clientId — skipping. Run \`pnpm seed\` to backfill legacy rows.`);
+      continue;
+    }
+
+    let promptCtx: PromptContext;
+    try {
+      promptCtx = await loadPromptContext(schedule.clientId);
+    } catch (err) {
+      console.error(`[cron] Failed to load client context for schedule ${schedule.id}:`, err);
+      continue;
+    }
+
     const platforms: string[] = JSON.parse(schedule.platforms || "[]");
     const pillars: string[] = schedule.contentPillars
       ? JSON.parse(schedule.contentPillars)
@@ -125,21 +68,25 @@ async function runGenerateContent(): Promise<{
     const generatedPosts: number[] = [];
 
     for (let i = 0; i < schedule.postsPerRun; i++) {
-      const platform = platforms[i % platforms.length];
-      const pillar = pillars[i % pillars.length] as (typeof CONTENT_PILLARS)[number];
-      const systemPrompt = PLATFORM_PROMPTS[platform] ?? PLATFORM_PROMPTS.instagram;
+      const platform = platforms[i % platforms.length] as Platform;
+      const pillar = pillars[i % pillars.length] as ContentPillar;
 
-      const userMessage = schedule.generationPrompt
-        ? `${schedule.generationPrompt}\nPlatform: ${platform}\nContent pillar: ${pillar.replace(/_/g, " ")}`
-        : `Generate a ${pillar.replace(/_/g, " ")} post for ${platform}. Brand: Optentia — AI systems and automation operator for businesses. Will Hershey is the founder. Be strategic, direct, and intelligent.`;
+      const { system, user } = buildPostPrompt(promptCtx, {
+        platform,
+        contentPillar: pillar,
+        extraInstructions: schedule.generationPrompt ?? undefined,
+      });
 
       try {
-        const response = await invokeLLM({
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userMessage },
-          ],
-        });
+        const response = await trackedInvokeLLM(
+          {
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: user },
+            ],
+          },
+          { clientId: schedule.clientId, taskType: "scheduled_post", summary: `schedule "${schedule.name}" / ${platform} / ${pillar}` },
+        );
 
         const rawContent = response.choices[0]?.message?.content;
         if (!rawContent) continue;
@@ -155,8 +102,8 @@ async function runGenerateContent(): Promise<{
         let imageUrl: string | undefined;
         if (platform === "instagram" || platform === "facebook") {
           try {
-            const imagePrompt = `Professional social media graphic for Optentia, a business AI automation company. Theme: "${parsed.hook?.substring(0, 80)}". Style: dark background with teal accent colors, minimalist, bold typography, no people or faces. Square 1:1 format.`;
-            const imgResult = await generateImage({ prompt: imagePrompt });
+            const img = buildImagePrompt(promptCtx, { caption: parsed.caption ?? parsed.hook ?? "", platform });
+            const imgResult = await generateImage({ prompt: img.prompt, size: img.size });
             if (imgResult?.url) imageUrl = imgResult.url;
           } catch (imgErr) {
             console.error(`[cron] Image generation failed for ${platform} (non-fatal):`, imgErr);
@@ -164,6 +111,7 @@ async function runGenerateContent(): Promise<{
         }
 
         const post = await createContentPost({
+          clientId: schedule.clientId,
           title: parsed.hook?.substring(0, 100),
           caption: parsed.caption,
           hashtags: parsed.hashtags,
@@ -172,8 +120,9 @@ async function runGenerateContent(): Promise<{
           contentPillar: pillar,
           status: "pending_approval",
           aiGenerated: true,
-          generationPrompt: userMessage,
+          generationPrompt: user,
           imageUrl,
+          scheduleId: schedule.id,
           contentType: platform === "youtube" ? "video" : imageUrl ? "image" : "text",
         });
 
@@ -212,6 +161,10 @@ async function runPublishPosts(): Promise<{ published: number; failed: number }>
   const failed: number[] = [];
 
   for (const post of duePosts) {
+    // Manual channels (email/WhatsApp) have no auto-publish path — leave them
+    // scheduled; the operator sends them and marks them published in the queue.
+    if (isManualPlatform(post.platform)) continue;
+
     try {
       const result = await publishPostToPlatform(post);
 
@@ -222,7 +175,7 @@ async function runPublishPosts(): Promise<{ published: number; failed: number }>
           externalPostId: result.externalPostId,
           publishError: null,
         });
-        await recordAnalyticsEvent({ postId: post.id, platform: post.platform, eventType: "published" });
+        await recordAnalyticsEvent({ postId: post.id, clientId: post.clientId, platform: post.platform, eventType: "published" });
         published.push(post.id);
         await notifyOwner({
           title: `Post Published: ${post.platform}`,
@@ -230,7 +183,7 @@ async function runPublishPosts(): Promise<{ published: number; failed: number }>
         });
       } else {
         await updateContentPost(post.id, { status: "failed", publishError: result.error });
-        await recordAnalyticsEvent({ postId: post.id, platform: post.platform, eventType: "failed" });
+        await recordAnalyticsEvent({ postId: post.id, clientId: post.clientId, platform: post.platform, eventType: "failed" });
         failed.push(post.id);
         await notifyOwner({
           title: `Publish Failed: ${post.platform}`,
@@ -240,7 +193,7 @@ async function runPublishPosts(): Promise<{ published: number; failed: number }>
     } catch (err) {
       console.error(`[cron] Failed to publish post ${post.id}:`, err);
       await updateContentPost(post.id, { status: "failed", publishError: String(err) });
-      await recordAnalyticsEvent({ postId: post.id, platform: post.platform, eventType: "failed" });
+      await recordAnalyticsEvent({ postId: post.id, clientId: post.clientId, platform: post.platform, eventType: "failed" });
       failed.push(post.id);
     }
   }
@@ -311,6 +264,7 @@ export async function publishPostsHandler(req: Request, res: Response) {
 
 async function publishPostToPlatform(post: {
   id: number;
+  clientId: number | null;
   platform: string;
   caption: string | null;
   hashtags: string | null;
@@ -318,7 +272,7 @@ async function publishPostToPlatform(post: {
   imageUrl: string | null;
   scriptText: string | null;
 }): Promise<{ success: boolean; externalPostId?: string; error?: string }> {
-  const conn = await getPlatformConnection(post.platform);
+  const conn = await getPlatformConnection(post.platform, post.clientId);
 
   if (!conn?.accessToken) {
     return {

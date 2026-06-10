@@ -6,6 +6,7 @@ import {
   getHeygenRequests,
   updateHeygenRequest,
 } from "../db";
+import { assertClientAccess } from "../_core/clientScope";
 import { protectedProcedure, router } from "../_core/trpc";
 
 // HeyGen API integration — uses the configured API key from platform settings
@@ -34,9 +35,12 @@ async function getHeyGenVideoStatus(apiKey: string, videoId: string) {
 }
 
 export const heygenRouter = router({
-  list: protectedProcedure.query(async () => {
-    return getHeygenRequests();
-  }),
+  list: protectedProcedure
+    .input(z.object({ clientId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
+      return getHeygenRequests(input.clientId);
+    }),
 
   get: protectedProcedure
     .input(z.object({ id: z.number() }))
@@ -48,6 +52,7 @@ export const heygenRouter = router({
 
   createRequest: protectedProcedure
     .input(z.object({
+      clientId: z.number(),
       title: z.string(),
       scriptText: z.string(),
       avatarId: z.string().optional(),
@@ -55,10 +60,12 @@ export const heygenRouter = router({
       linkedPostId: z.number().optional(),
       apiKey: z.string().optional(), // Override — otherwise uses stored platform key
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      await assertClientAccess(ctx, input.clientId);
       const { apiKey, ...data } = input;
 
       const request = await createHeygenRequest({
+        clientId: data.clientId,
         title: data.title,
         scriptText: data.scriptText,
         avatarId: data.avatarId,
