@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Optentia Elegant Dark Theme */
+  /* Content Operator — premium dark-first theme */
   --background: oklch(0.10 0.01 240);
   --foreground: oklch(0.95 0.005 240);
   --card: oklch(0.13 0.01 240);

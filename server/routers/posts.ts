@@ -18,9 +18,8 @@ import {
   buildBrandBlock,
   buildImagePrompt,
   buildPostPrompt,
-  loadPromptContext,
-  PLATFORM_IMAGE_BRIEF,
   extractHook,
+  loadPromptContext,
   type PromptContext,
 } from "../promptBuilder";
 import { PLATFORMS, CONTENT_PILLARS, isManualPlatform, type Platform } from "@shared/platforms";

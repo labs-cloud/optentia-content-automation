@@ -102,14 +102,14 @@ describe("Posts Router: platform enum includes LinkedIn variants", () => {
     expect(source).toContain('case "linkedin_company":');
   });
 
-  it("generateAI maps linkedin variants to linkedin prompt key", async () => {
+  it("prompt builder has dedicated guidelines for both linkedin variants", async () => {
     const fs = await import("fs");
     const path = await import("path");
-    const routerPath = path.join(process.cwd(), "server/routers/posts.ts");
-    const source = fs.readFileSync(routerPath, "utf-8");
+    const builderPath = path.join(process.cwd(), "server/promptBuilder.ts");
+    const source = fs.readFileSync(builderPath, "utf-8");
 
-    expect(source).toContain('platform === "linkedin_personal" || input.platform === "linkedin_company"');
-    expect(source).toContain('"linkedin"');
+    expect(source).toContain("linkedin_personal:");
+    expect(source).toContain("linkedin_company:");
   });
 });
 
