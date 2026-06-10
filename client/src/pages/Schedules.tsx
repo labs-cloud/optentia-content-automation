@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { PLATFORM_CONFIG, CRON_PRESETS } from "@/lib/platformUtils";
+import { PLATFORM_CONFIG, CRON_PRESETS, isManualPlatform } from "@/lib/platformUtils";
+import { useClientScope } from "@/contexts/ActiveClientContext";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,9 +12,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { CheckCircle2, Clock, Loader2, Plus, Timer, Trash2, Zap } from "lucide-react";
+import { Briefcase, CheckCircle2, Clock, Loader2, Plus, Timer, Trash2, Zap } from "lucide-react";
+import { useLocation } from "wouter";
 
-type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
+type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube" | "email" | "whatsapp";
 
 const PILLAR_OPTIONS = [
   { value: "strong_opinion", label: "Strong Opinion" },
@@ -22,6 +25,8 @@ const PILLAR_OPTIONS = [
 ];
 
 export default function Schedules() {
+  const [, setLocation] = useLocation();
+  const { clientId, enabled } = useClientScope();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -32,7 +37,7 @@ export default function Schedules() {
   const [generationPrompt, setGenerationPrompt] = useState("");
 
   const utils = trpc.useUtils();
-  const { data: schedules, isLoading } = trpc.schedules.list.useQuery();
+  const { data: schedules, isLoading } = trpc.schedules.list.useQuery({ clientId }, { enabled });
 
   const createMutation = trpc.schedules.create.useMutation({
     onSuccess: () => {
@@ -86,6 +91,7 @@ export default function Schedules() {
     if (!name.trim()) return toast.error("Schedule name is required");
     if (selectedPlatforms.length === 0) return toast.error("Select at least one platform");
     createMutation.mutate({
+      clientId,
       name,
       description: description || undefined,
       cron,
@@ -95,6 +101,20 @@ export default function Schedules() {
       generationPrompt: generationPrompt || undefined,
     });
   };
+
+  if (!enabled) {
+    return (
+      <div className="p-6 max-w-4xl">
+        <EmptyState
+          icon={Briefcase}
+          title="No client selected"
+          description="Select a client workspace to manage its automated content schedules."
+          actionLabel="Go to Clients"
+          onAction={() => setLocation("/clients")}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -260,7 +280,7 @@ export default function Schedules() {
             <div>
               <label className="text-xs text-muted-foreground mb-2 block">Target Platforms *</label>
               <div className="grid grid-cols-3 gap-2">
-                {(["instagram", "linkedin_personal", "linkedin_company", "facebook", "youtube"] as Platform[]).map((p) => {
+                {(["instagram", "linkedin_personal", "linkedin_company", "facebook", "youtube", "email", "whatsapp"] as Platform[]).map((p) => {
                   const cfg = PLATFORM_CONFIG[p];
                   const selected = selectedPlatforms.includes(p);
                   return (
@@ -272,7 +292,7 @@ export default function Schedules() {
                       }`}
                     >
                       <span className="text-xl">{cfg.icon}</span>
-                      <span>{cfg.label}</span>
+                      <span>{cfg.label}{isManualPlatform(p) ? " (manual send)" : ""}</span>
                     </button>
                   );
                 })}

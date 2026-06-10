@@ -23,10 +23,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { PLATFORM_CONFIG } from "@/lib/platformUtils";
+import { PLATFORM_CONFIG, isManualPlatform } from "@/lib/platformUtils";
 import { trpc } from "@/lib/trpc";
+import { useClientScope } from "@/contexts/ActiveClientContext";
 
-type PlatformKey = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
+type PlatformKey = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube" | "email" | "whatsapp";
 
 interface CaptionIdea {
   tone: string;
@@ -54,6 +55,8 @@ const PLATFORM_KEYS: PlatformKey[] = [
   "linkedin_company",
   "facebook",
   "youtube",
+  "email",
+  "whatsapp",
 ];
 
 const VARIATION_HINTS = [
@@ -68,6 +71,7 @@ const VARIATION_HINTS = [
 ];
 
 export function InstantPostDialog({ trigger }: Props) {
+  const { clientId, enabled } = useClientScope();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("topic");
 
@@ -95,6 +99,8 @@ export function InstantPostDialog({ trigger }: Props) {
     linkedin_company: false,
     facebook: false,
     youtube: false,
+    email: false,
+    whatsapp: false,
   });
 
   const utils = trpc.useUtils();
@@ -125,15 +131,26 @@ export function InstantPostDialog({ trigger }: Props) {
 
   const quickPublishMut = trpc.posts.quickPublish.useMutation({
     onSuccess: (data) => {
-      const succeeded = (data.results ?? []).filter((r: { success: boolean }) => r.success);
-      const failed = (data.results ?? []).filter((r: { success: boolean }) => !r.success);
+      const results = (data.results ?? []) as { platform: string; success: boolean; error?: string }[];
+      const succeeded = results.filter((r) => r.success);
+      // Email/WhatsApp are manual channels — the server reports success:false with an
+      // explanatory error, but the content is saved to the queue. Don't treat as failures.
+      const manual = results.filter((r) => !r.success && isManualPlatform(r.platform));
+      const failed = results.filter((r) => !r.success && !isManualPlatform(r.platform));
       if (succeeded.length > 0) {
         toast.success(`Published to ${succeeded.length} platform${succeeded.length > 1 ? "s" : ""}`);
+      }
+      if (manual.length > 0) {
+        toast.info(
+          `Saved to queue for manual send: ${manual
+            .map((m) => PLATFORM_CONFIG[m.platform as PlatformKey]?.label ?? m.platform)
+            .join(", ")}`,
+        );
       }
       if (failed.length > 0) {
         toast.error(
           `Failed on ${failed.length}: ${failed
-            .map((f: { platform: string; error?: string }) => `${f.platform} (${f.error ?? "unknown"})`)
+            .map((f) => `${f.platform} (${f.error ?? "unknown"})`)
             .join(", ")}`,
         );
       }
@@ -172,14 +189,14 @@ export function InstantPostDialog({ trigger }: Props) {
       toast.error("Add a topic first");
       return;
     }
-    generateCaptionsMut.mutate({ topic: topic.trim() });
+    generateCaptionsMut.mutate({ clientId, topic: topic.trim() });
   }
 
   function handlePickCaption(idea: CaptionIdea) {
     setChosenCaption(idea);
     setEditedCaption(idea.caption);
     setEditedHashtags(idea.hashtags);
-    generateConceptsMut.mutate({ caption: idea.caption });
+    generateConceptsMut.mutate({ clientId, caption: idea.caption });
   }
 
   function handlePickConcept(concept: VisualConcept) {
@@ -205,7 +222,7 @@ export function InstantPostDialog({ trigger }: Props) {
     setPreviewUrl(null);
     setChosenConcept(null);
     setVisualConcepts([]);
-    generateConceptsMut.mutate({ caption: chosenCaption.caption });
+    generateConceptsMut.mutate({ clientId, caption: chosenCaption.caption });
   }
 
   function handleAcceptPreview() {
@@ -220,6 +237,7 @@ export function InstantPostDialog({ trigger }: Props) {
       return;
     }
     quickPublishMut.mutate({
+      clientId,
       caption: editedCaption.trim(),
       hashtags: editedHashtags.trim() || undefined,
       imageUrl: previewUrl,
@@ -282,7 +300,7 @@ export function InstantPostDialog({ trigger }: Props) {
               className="resize-none"
             />
             <p className="text-xs text-muted-foreground">
-              Optentia will generate 3 caption angles from this. Refine after.
+              AI will generate 3 caption angles from this. Refine after.
             </p>
           </div>
         )}

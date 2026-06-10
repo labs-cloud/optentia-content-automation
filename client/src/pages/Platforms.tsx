@@ -1,19 +1,24 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { PLATFORM_CONFIG } from "@/lib/platformUtils";
+import { PLATFORM_CONFIG, isManualPlatform } from "@/lib/platformUtils";
+import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
+import { EmptyState } from "@/components/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CheckCircle2, Loader2, Settings, Wifi, WifiOff, Zap } from "lucide-react";
+import { Briefcase, CheckCircle2, Loader2, Settings, Wifi, WifiOff, Zap } from "lucide-react";
+import { useLocation } from "wouter";
 
-type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
+type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube" | "email" | "whatsapp";
+type CredentialPlatform = Exclude<Platform, "email" | "whatsapp">;
 
-const PLATFORM_HELP: Record<Platform, { fields: { key: string; label: string; placeholder: string; type?: string }[]; guide: string }> = {
+const PLATFORM_HELP: Record<CredentialPlatform, { fields: { key: string; label: string; placeholder: string; type?: string }[]; guide: string }> = {
   instagram: {
     fields: [
-      { key: "accountName", label: "Account Name", placeholder: "@optentia" },
+      { key: "accountName", label: "Account Name", placeholder: "@yourhandle" },
       { key: "accessToken", label: "Access Token", placeholder: "Instagram Graph API access token", type: "password" },
       { key: "accountId", label: "Instagram Business Account ID", placeholder: "17841400000000000" },
     ],
@@ -29,7 +34,7 @@ const PLATFORM_HELP: Record<Platform, { fields: { key: string; label: string; pl
   },
   linkedin_company: {
     fields: [
-      { key: "accountName", label: "Company Name", placeholder: "Optentia" },
+      { key: "accountName", label: "Company Name", placeholder: "Company name" },
       { key: "accessToken", label: "Access Token", placeholder: "LinkedIn OAuth 2.0 access token", type: "password" },
       { key: "accountId", label: "Organization URN", placeholder: "urn:li:organization:12345678" },
     ],
@@ -37,7 +42,7 @@ const PLATFORM_HELP: Record<Platform, { fields: { key: string; label: string; pl
   },
   facebook: {
     fields: [
-      { key: "accountName", label: "Page Name", placeholder: "Optentia" },
+      { key: "accountName", label: "Page Name", placeholder: "Page name" },
       { key: "accessToken", label: "Page Access Token", placeholder: "Facebook Page access token", type: "password" },
       { key: "pageId", label: "Page ID", placeholder: "123456789012345" },
     ],
@@ -45,7 +50,7 @@ const PLATFORM_HELP: Record<Platform, { fields: { key: string; label: string; pl
   },
   youtube: {
     fields: [
-      { key: "accountName", label: "Channel Name", placeholder: "Optentia" },
+      { key: "accountName", label: "Channel Name", placeholder: "Channel name" },
       { key: "accessToken", label: "OAuth Access Token", placeholder: "YouTube Data API v3 access token", type: "password" },
       { key: "refreshToken", label: "Refresh Token", placeholder: "OAuth refresh token", type: "password" },
       { key: "accountId", label: "Channel ID", placeholder: "UCxxxxxxxxxxxxxxxxxxxxxxxx" },
@@ -54,14 +59,17 @@ const PLATFORM_HELP: Record<Platform, { fields: { key: string; label: string; pl
   },
 };
 
-const PLATFORM_ORDER: Platform[] = ["instagram", "linkedin_personal", "linkedin_company", "facebook", "youtube"];
+const PLATFORM_ORDER: Platform[] = ["instagram", "linkedin_personal", "linkedin_company", "facebook", "youtube", "email", "whatsapp"];
 
 export default function Platforms() {
-  const [editPlatform, setEditPlatform] = useState<Platform | null>(null);
+  const [, setLocation] = useLocation();
+  const { activeClient } = useActiveClient();
+  const { clientId, enabled } = useClientScope();
+  const [editPlatform, setEditPlatform] = useState<CredentialPlatform | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
 
   const utils = trpc.useUtils();
-  const { data: platforms } = trpc.platforms.list.useQuery();
+  const { data: platforms } = trpc.platforms.list.useQuery({ clientId }, { enabled });
 
   const upsertMutation = trpc.platforms.upsert.useMutation({
     onSuccess: () => {
@@ -84,7 +92,15 @@ export default function Platforms() {
     onError: (e) => toast.error(e.message),
   });
 
-  const openEdit = (platform: Platform) => {
+  const checkAllMutation = trpc.platforms.checkAllConnections.useMutation({
+    onSuccess: () => {
+      toast.success("Checked all connections");
+      utils.platforms.list.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const openEdit = (platform: CredentialPlatform) => {
     const existing = platforms?.find((p) => p.platform === platform);
     setFormValues({
       accountName: existing?.accountName ?? "",
@@ -99,6 +115,7 @@ export default function Platforms() {
   const handleSave = () => {
     if (!editPlatform) return;
     upsertMutation.mutate({
+      clientId,
       platform: editPlatform,
       accountName: formValues.accountName || undefined,
       accountId: formValues.accountId || undefined,
@@ -108,16 +125,46 @@ export default function Platforms() {
     });
   };
 
+  if (!enabled) {
+    return (
+      <div className="p-6 max-w-4xl">
+        <EmptyState
+          icon={Briefcase}
+          title="No client selected"
+          description="Select a client workspace to manage its platform connections."
+          actionLabel="Go to Clients"
+          onAction={() => setLocation("/clients")}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-display font-bold tracking-tight flex items-center gap-2">
-          <Wifi className="h-6 w-6 text-primary" />
-          Platform Connections
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage API credentials and monitor connection status for each social platform
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold tracking-tight flex items-center gap-2">
+            <Wifi className="h-6 w-6 text-primary" />
+            Platform Connections
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Connections for {activeClient?.name} — manage API credentials and monitor connection status per channel
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-xs shrink-0"
+          onClick={() => checkAllMutation.mutate({ clientId })}
+          disabled={checkAllMutation.isPending}
+        >
+          {checkAllMutation.isPending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Zap className="h-3.5 w-3.5" />
+          )}
+          Check all
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -126,6 +173,29 @@ export default function Platforms() {
           const conn = platforms?.find((p) => p.platform === platform);
           const isConnected = conn?.status === "connected";
           const hasError = conn?.status === "error";
+
+          if (isManualPlatform(platform)) {
+            return (
+              <Card key={platform} className="bg-card border-border/50">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-11 w-11 rounded-xl ${cfg.bgColor} border ${cfg.borderColor} flex items-center justify-center`}>
+                        <span className="text-2xl">{cfg.icon}</span>
+                      </div>
+                      <CardTitle className="text-base font-semibold">{cfg.label}</CardTitle>
+                    </div>
+                    <Badge className="text-xs border-0 bg-muted/50 text-muted-foreground">Manual channel</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">
+                    Content for this channel is generated and saved to the queue — you send it through your own tool.
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          }
 
           return (
             <Card key={platform} className={`bg-card border-border/50 transition-colors ${isConnected ? "border-emerald-500/20" : ""}`}>
@@ -175,7 +245,7 @@ export default function Platforms() {
                     variant="outline"
                     size="sm"
                     className="flex-1 gap-1.5 text-xs"
-                    onClick={() => openEdit(platform)}
+                    onClick={() => openEdit(platform as CredentialPlatform)}
                   >
                     <Settings className="h-3.5 w-3.5" />
                     Configure
@@ -185,7 +255,7 @@ export default function Platforms() {
                       variant="ghost"
                       size="sm"
                       className="text-xs gap-1.5"
-                      onClick={() => testMutation.mutate({ platform })}
+                      onClick={() => testMutation.mutate({ clientId, platform })}
                       disabled={testMutation.isPending}
                     >
                       {testMutation.isPending ? (
