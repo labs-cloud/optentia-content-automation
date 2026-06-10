@@ -21,17 +21,21 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/useMobile";
+import { ActiveClientProvider, useClientScope } from "@/contexts/ActiveClientContext";
 import { SignIn, useClerk, useUser } from "@clerk/clerk-react";
 import {
   BarChart3,
+  Brain,
+  Briefcase,
   CalendarDays,
   CheckSquare,
   Clapperboard,
   FolderOpen,
   LayoutDashboard,
+  Lightbulb,
   LogOut,
+  Megaphone,
   PanelLeft,
-  Settings,
   Sparkles,
   Timer,
   Wifi,
@@ -40,21 +44,55 @@ import {
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
+import { BottomNav } from "./BottomNav";
+import { ClientSwitcher } from "./ClientSwitcher";
+import { FloatingActionButton } from "./FloatingActionButton";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { trpc } from "@/lib/trpc";
 
-const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  { icon: CheckSquare, label: "Content Queue", path: "/queue", badge: "pending" },
-  { icon: CalendarDays, label: "Calendar", path: "/calendar" },
-  { icon: FolderOpen, label: "Content Library", path: "/library" },
-  { icon: Sparkles, label: "AI Generator", path: "/generate" },
-  { icon: BarChart3, label: "Analytics", path: "/analytics" },
-  { icon: Clapperboard, label: "HeyGen Videos", path: "/heygen" },
-  { icon: Wifi, label: "Platforms", path: "/platforms" },
-  { icon: Timer, label: "Schedules", path: "/schedules" },
+type MenuItem = { icon: typeof LayoutDashboard; label: string; path: string; badge?: "pending" };
+
+const menuGroups: Array<{ label: string | null; items: MenuItem[] }> = [
+  {
+    label: null,
+    items: [{ icon: LayoutDashboard, label: "Home", path: "/" }],
+  },
+  {
+    label: "Workspace",
+    items: [
+      { icon: Briefcase, label: "Clients", path: "/clients" },
+      { icon: Brain, label: "Brand Brain", path: "/brand" },
+    ],
+  },
+  {
+    label: "Create",
+    items: [
+      { icon: Lightbulb, label: "Brainstorm", path: "/brainstorm" },
+      { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
+      { icon: Sparkles, label: "AI Generator", path: "/generate" },
+    ],
+  },
+  {
+    label: "Operate",
+    items: [
+      { icon: CheckSquare, label: "Content Queue", path: "/queue", badge: "pending" },
+      { icon: CalendarDays, label: "Calendar", path: "/calendar" },
+      { icon: FolderOpen, label: "Content Library", path: "/library" },
+      { icon: BarChart3, label: "Analytics", path: "/analytics" },
+    ],
+  },
+  {
+    label: "Channels",
+    items: [
+      { icon: Wifi, label: "Platforms", path: "/platforms" },
+      { icon: Timer, label: "Schedules", path: "/schedules" },
+      { icon: Clapperboard, label: "HeyGen Videos", path: "/heygen" },
+    ],
+  },
 ];
+
+const allMenuItems = menuGroups.flatMap((g) => g.items);
 
 const SIDEBAR_WIDTH_KEY = "optentia-sidebar-width";
 const DEFAULT_WIDTH = 240;
@@ -110,11 +148,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <SidebarProvider style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
-      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
-        {children}
-      </DashboardLayoutContent>
-    </SidebarProvider>
+    <ActiveClientProvider>
+      <SidebarProvider style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+        <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
+          {children}
+        </DashboardLayoutContent>
+      </SidebarProvider>
+    </ActiveClientProvider>
   );
 }
 
@@ -132,11 +172,13 @@ function DashboardLayoutContent({
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
-  const activeMenuItem = menuItems.find((item) => item.path === location);
+  const activeMenuItem = allMenuItems.find((item) => item.path === location);
+  const { clientId, enabled } = useClientScope();
 
-  const { data: summary } = trpc.analytics.summary.useQuery(undefined, {
-    refetchInterval: 30000,
-  });
+  const { data: summary } = trpc.analytics.summary.useQuery(
+    { clientId },
+    { refetchInterval: 30000, enabled },
+  );
 
   useEffect(() => {
     if (isCollapsed) setIsResizing(false);
@@ -186,7 +228,7 @@ function DashboardLayoutContent({
                 <div className="flex items-center gap-2 min-w-0">
                   <Zap className="h-5 w-5 text-primary shrink-0" />
                   <span className="font-display font-bold text-base tracking-tight truncate">
-                    Optentia
+                    Content Operator
                   </span>
                 </div>
               )}
@@ -195,34 +237,47 @@ function DashboardLayoutContent({
 
           {/* Navigation */}
           <SidebarContent className="gap-0 py-3">
-            <SidebarMenu className="px-2 gap-0.5">
-              {menuItems.map((item) => {
-                const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
-                const pendingCount = item.badge === "pending" ? (summary?.pending ?? 0) : 0;
-                return (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className={`h-9 transition-all font-normal rounded-lg ${
-                        isActive
-                          ? "bg-primary/10 text-primary hover:bg-primary/15"
-                          : "hover:bg-accent/60 text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      <item.icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : ""}`} />
-                      <span className="text-sm">{item.label}</span>
-                      {pendingCount > 0 && !isCollapsed && (
-                        <Badge className="ml-auto h-5 min-w-5 px-1 text-xs bg-primary/20 text-primary border-0">
-                          {pendingCount}
-                        </Badge>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
+            {/* Active client workspace */}
+            <div className="px-2 pb-3">
+              <ClientSwitcher compact={isCollapsed} />
+            </div>
+            {menuGroups.map((group, gi) => (
+              <div key={group.label ?? gi}>
+                {group.label && !isCollapsed && (
+                  <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+                    {group.label}
+                  </p>
+                )}
+                <SidebarMenu className="px-2 gap-0.5">
+                  {group.items.map((item) => {
+                    const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
+                    const pendingCount = item.badge === "pending" ? (summary?.pending ?? 0) : 0;
+                    return (
+                      <SidebarMenuItem key={item.path}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          onClick={() => setLocation(item.path)}
+                          tooltip={item.label}
+                          className={`h-9 transition-all font-normal rounded-lg ${
+                            isActive
+                              ? "bg-primary/10 text-primary hover:bg-primary/15"
+                              : "hover:bg-accent/60 text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <item.icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : ""}`} />
+                          <span className="text-sm">{item.label}</span>
+                          {pendingCount > 0 && !isCollapsed && (
+                            <Badge className="ml-auto h-5 min-w-5 px-1 text-xs bg-primary/20 text-primary border-0">
+                              {pendingCount}
+                            </Badge>
+                          )}
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </div>
+            ))}
           </SidebarContent>
 
           {/* User Footer */}
@@ -267,13 +322,20 @@ function DashboardLayoutContent({
       <SidebarInset className="bg-background">
         {isMobile && (
           <div className="flex border-b border-border/50 h-14 items-center justify-between bg-background/95 px-4 backdrop-blur sticky top-0 z-40">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <SidebarTrigger className="h-8 w-8 rounded-lg" />
-              <span className="font-medium text-sm">{activeMenuItem?.label ?? "Optentia"}</span>
+              <span className="font-medium text-sm truncate">{activeMenuItem?.label ?? "Content Operator"}</span>
             </div>
+            <ClientSwitcher compact />
           </div>
         )}
-        <main className="flex-1 min-h-screen">{children}</main>
+        <main className={`flex-1 min-h-screen ${isMobile ? "pb-24" : ""}`}>{children}</main>
+        {isMobile && (
+          <>
+            <BottomNav />
+            <FloatingActionButton />
+          </>
+        )}
       </SidebarInset>
     </>
   );

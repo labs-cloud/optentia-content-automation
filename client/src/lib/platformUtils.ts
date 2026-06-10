@@ -1,4 +1,7 @@
-export type Platform = "instagram" | "linkedin" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube";
+export type { Platform } from "@shared/platforms";
+export { isManualPlatform, RECOMMENDED_POSTING_TIMES } from "@shared/platforms";
+import type { Platform } from "@shared/platforms";
+
 export type PostStatus = "draft" | "pending_approval" | "approved" | "scheduled" | "published" | "rejected" | "failed";
 
 export const PLATFORM_CONFIG: Record<Platform, {
@@ -49,6 +52,20 @@ export const PLATFORM_CONFIG: Record<Platform, {
     bgColor: "bg-red-500/10",
     borderColor: "border-red-500/30",
     icon: "▶️",
+  },
+  email: {
+    label: "Email",
+    color: "text-amber-400",
+    bgColor: "bg-amber-500/10",
+    borderColor: "border-amber-500/30",
+    icon: "✉️",
+  },
+  whatsapp: {
+    label: "WhatsApp",
+    color: "text-green-400",
+    bgColor: "bg-green-500/10",
+    borderColor: "border-green-500/30",
+    icon: "💬",
   },
 };
 
@@ -103,10 +120,10 @@ export const STATUS_CONFIG: Record<PostStatus, {
 };
 
 export const CONTENT_PILLARS = [
-  { value: "strong_opinion", label: "Strong Opinion / Take", description: "Bold business takes, AI misuse, systems thinking" },
-  { value: "practical_education", label: "Practical AI Education", description: "Automation workflows, CRM systems, voice AI demos" },
-  { value: "documentary", label: "Documentary / Lifestyle", description: "Daily workflows, desk setups, business building" },
-  { value: "direct_promotion", label: "Direct Promotion", description: "Case studies, DM offers, consultation calls" },
+  { value: "strong_opinion", label: "Strong Opinion / Take", description: "Bold takes and contrarian thinking in the brand's space" },
+  { value: "practical_education", label: "Practical Education", description: "Actionable how-tos tied to the brand's offer" },
+  { value: "documentary", label: "Documentary / Lifestyle", description: "Behind-the-scenes of the brand's work and process" },
+  { value: "direct_promotion", label: "Direct Promotion", description: "Case studies, offers, and direct CTAs" },
 ];
 
 export const CRON_PRESETS = [
