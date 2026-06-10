@@ -39,10 +39,15 @@ async function startServer() {
   app.use(clerkMiddleware());
   registerStorageProxy(app);
 
+  // Vercel Cron invokes with GET (Authorization: Bearer CRON_SECRET); keep
+  // POST for manual/curl use.
+  app.get("/api/scheduled/check-and-run", checkAndRunHandler);
   app.post("/api/scheduled/check-and-run", checkAndRunHandler);
+  app.get("/api/scheduled/generate-content", generateContentHandler);
   app.post("/api/scheduled/generate-content", generateContentHandler);
+  app.get("/api/scheduled/publish-posts", publishPostsHandler);
   app.post("/api/scheduled/publish-posts", publishPostsHandler);
-  // GET so it can be triggered from a browser address bar with ?secret=
+  // GET also works from a browser address bar with ?secret=
   app.get("/api/scheduled/migrate", migrateHandler);
   app.post("/api/scheduled/migrate", migrateHandler);
 
