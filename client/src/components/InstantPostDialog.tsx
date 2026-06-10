@@ -466,11 +466,20 @@ export function InstantPostDialog({ trigger }: Props) {
                       />
                       <span className="text-sm">
                         {cfg.icon} {cfg.label}
+                        {isManualPlatform(p) && (
+                          <span className="text-xs text-muted-foreground"> (manual)</span>
+                        )}
                       </span>
                     </label>
                   );
                 })}
               </div>
+              {PLATFORM_KEYS.some((p) => selected[p] && isManualPlatform(p)) && (
+                <p className="text-xs text-muted-foreground">
+                  Email and WhatsApp content is saved to the queue for you to send manually — it
+                  isn't auto-published.
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -485,7 +494,7 @@ export function InstantPostDialog({ trigger }: Props) {
           {step === "topic" && (
             <Button
               onClick={handleGenerateCaptions}
-              disabled={busy || !topic.trim()}
+              disabled={busy || !topic.trim() || !enabled}
               className="gap-2 ml-auto"
             >
               {generateCaptionsMut.isPending ? (
@@ -511,7 +520,7 @@ export function InstantPostDialog({ trigger }: Props) {
           {step === "publish" && (
             <Button
               onClick={handlePublish}
-              disabled={busy || !previewUrl || !editedCaption.trim()}
+              disabled={busy || !previewUrl || !editedCaption.trim() || !enabled}
               className="gap-2 ml-auto"
             >
               {quickPublishMut.isPending ? (
