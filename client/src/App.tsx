@@ -19,6 +19,7 @@ import BrandBrain from "./pages/BrandBrain";
 import Brainstorm from "./pages/Brainstorm";
 import Campaigns from "./pages/Campaigns";
 import CampaignDetail from "./pages/CampaignDetail";
+import Settings from "./pages/Settings";
 
 function Router() {
   return (
@@ -35,6 +36,7 @@ function Router() {
         <Route path="/library" component={ContentLibrary} />
         <Route path="/generate" component={AIGenerator} />
         <Route path="/analytics" component={Analytics} />
+        <Route path="/settings" component={Settings} />
         <Route path="/heygen" component={HeyGen} />
         <Route path="/platforms" component={Platforms} />
         <Route path="/schedules" component={Schedules} />

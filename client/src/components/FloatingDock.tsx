@@ -14,6 +14,7 @@ import {
   Lightbulb,
   Megaphone,
   MoreHorizontal,
+  Settings,
   Sparkles,
   Timer,
   Wifi,
@@ -54,6 +55,7 @@ const overflowItems: DockItem[] = [
   { icon: Wifi, label: "Platforms", path: "/platforms" },
   { icon: Timer, label: "Schedules", path: "/schedules" },
   { icon: Clapperboard, label: "HeyGen Videos", path: "/heygen" },
+  { icon: Settings, label: "Settings", path: "/settings" },
 ];
 
 const spring = { type: "spring" as const, stiffness: 400, damping: 22 };
