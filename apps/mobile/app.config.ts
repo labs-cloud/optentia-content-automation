@@ -31,6 +31,7 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-secure-store",
     "expo-font",
+    "./plugins/withFmtFix",
     [
       "expo-splash-screen",
       {
