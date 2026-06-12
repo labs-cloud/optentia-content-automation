@@ -1,37 +1,30 @@
-import { ApprovalCard } from "@/components/ApprovalCard";
 import { EmptyState } from "@/components/EmptyState";
-import { PremiumCard } from "@/components/PremiumCard";
-import { StatCard } from "@/components/StatCard";
-import { StaggerItem, StaggerList } from "@/components/motion/primitives";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
-import { PLATFORM_CONFIG } from "@/lib/platformUtils";
+import { PLATFORM_CONFIG, formatRelativeTime } from "@/lib/platformUtils";
+import type { Platform } from "@shared/platforms";
 import { trpc } from "@/lib/trpc";
-import { CAMPAIGN_GOAL_LABELS, type CampaignGoal } from "@shared/platforms";
 import {
   BarChart3,
-  CalendarClock,
-  CheckCircle2,
-  CheckSquare,
-  FileText,
+  Brain,
+  CalendarDays,
+  Check,
   Lightbulb,
-  Megaphone,
   Plus,
   Sparkles,
   Users,
-  Zap,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-const CHART_COLORS = ["#22d3ee", "#34d399", "#f59e0b", "#f87171", "#818cf8", "#e879f9", "#fbbf24", "#4ade80"];
-
-const CAMPAIGN_STATUS_STYLES: Record<string, string> = {
-  active: "bg-emerald-500/15 text-emerald-400",
-  draft: "bg-muted/60 text-muted-foreground",
-};
+/** Maps a live platform id onto the prototype's colored platform-icon class. */
+function platClass(platform: string): string {
+  if (platform === "instagram") return "plat-ig";
+  if (platform.startsWith("linkedin")) return "plat-li";
+  if (platform === "facebook") return "plat-fb";
+  if (platform === "youtube") return "plat-yt";
+  return "plat-default";
+}
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
@@ -40,9 +33,7 @@ export default function Dashboard() {
   const utils = trpc.useUtils();
 
   const { data: summary } = trpc.analytics.summary.useQuery({ clientId }, { enabled });
-  const { data: byPlatform } = trpc.analytics.byPlatform.useQuery({ clientId }, { enabled });
   const { data: pendingPosts } = trpc.posts.pendingApproval.useQuery({ clientId }, { enabled });
-  const { data: campaigns } = trpc.campaigns.getCampaigns.useQuery({ clientId }, { enabled });
 
   const approveMutation = trpc.posts.approve.useMutation({
     onSuccess: () => {
@@ -76,196 +67,193 @@ export default function Dashboard() {
     );
   }
 
-  const queuePreview = (pendingPosts ?? []).slice(0, 3);
-  const activeCampaigns = (campaigns ?? []).filter((c) => c.status === "active" || c.status === "draft");
+  const pending = summary?.pending ?? 0;
+  const scheduled = summary?.scheduled ?? 0;
+  const published = summary?.published ?? 0;
+  const total = summary?.total ?? 0;
+  const approvals = (pendingPosts ?? []).slice(0, 4);
   const busy = approveMutation.isPending || rejectMutation.isPending;
 
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+
   return (
-    <div className="container py-6 sm:py-8 space-y-8">
+    <div className="container py-6 sm:py-8">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="topbar">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Zap className="h-7 w-7 text-primary" />
-            {activeClient?.name} · command center
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            What needs you today{activeClient?.industry ? ` — ${activeClient.industry}` : ""}
-          </p>
+          <div className="eyebrow">Workspace · {today}</div>
+          <h1 className="page-h1">{activeClient?.name}</h1>
+          <div className="topbar-pill">
+            <span className="pulse" />
+            {activeClient?.industry
+              ? `Brand Brain calibrated · ${activeClient.industry}`
+              : "Brand Brain calibrated · ready for review"}
+          </div>
         </div>
-        {/* Quick actions */}
-        <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setLocation("/brainstorm")}>
-            <Lightbulb className="h-4 w-4 mr-1.5" /> Brainstorm
-          </Button>
-          <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setLocation("/campaigns?new=1")}>
-            <Plus className="h-4 w-4 mr-1.5" /> New campaign
-          </Button>
-          <Button size="sm" className="rounded-xl glow-primary" onClick={() => setLocation("/generate")}>
-            <Sparkles className="h-4 w-4 mr-1.5" /> Generate post
-          </Button>
+        <div className="topbar-actions">
+          <button className="btn btn-ghost" onClick={() => setLocation("/campaigns?new=1")}>
+            <Plus /> New campaign
+          </button>
+          <button className="btn btn-ai" onClick={() => setLocation("/generate")}>
+            <Sparkles /> Generate posts
+          </button>
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Pending approval"
-          value={summary?.pending ?? 0}
-          icon={CheckSquare}
-          accent="text-amber-400"
-          hint="Waiting in the queue"
-          onClick={() => setLocation("/queue")}
-        />
-        <StatCard
-          label="Scheduled"
-          value={summary?.scheduled ?? 0}
-          icon={CalendarClock}
-          accent="text-blue-400"
-          hint="Going out automatically"
-          onClick={() => setLocation("/calendar")}
-        />
-        <StatCard
-          label="Published"
-          value={summary?.published ?? 0}
-          icon={CheckCircle2}
-          accent="text-primary"
-        />
-        <StatCard
-          label="Total posts"
-          value={summary?.total ?? 0}
-          icon={FileText}
-        />
+      {/* KPIs */}
+      <div className="kpi-grid">
+        <button className="kpi warn" onClick={() => setLocation("/queue")}>
+          <div className="kpi-label">Pending approval</div>
+          <div className="kpi-value">{pending}</div>
+          <div className="kpi-delta">Waiting in the queue</div>
+        </button>
+        <button className="kpi" onClick={() => setLocation("/calendar")}>
+          <div className="kpi-label">Scheduled</div>
+          <div className="kpi-value">{scheduled}</div>
+          <div className="kpi-delta">Going out automatically</div>
+        </button>
+        <button className="kpi" onClick={() => setLocation("/analytics")}>
+          <div className="kpi-label">Published</div>
+          <div className="kpi-value">{published}</div>
+          <div className="kpi-delta up">
+            <span className="arrow">▲</span> live across channels
+          </div>
+        </button>
+        <div className="kpi ai">
+          <div className="kpi-label">Total posts</div>
+          <div className="kpi-value">{total}</div>
+          <div className="kpi-delta">in this workspace</div>
+        </div>
       </div>
 
-      {/* Needs your approval */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="font-display font-semibold text-lg flex items-center gap-2">
-            <CheckSquare className="h-5 w-5 text-amber-400" />
-            Needs your approval
-            {(pendingPosts?.length ?? 0) > 0 && (
-              <Badge className="h-5 px-1.5 text-xs bg-amber-500/20 text-amber-400 border-0">
-                {pendingPosts?.length}
-              </Badge>
-            )}
-          </h2>
-          <Button variant="ghost" size="sm" className="text-xs rounded-lg" onClick={() => setLocation("/queue")}>
-            View all
-          </Button>
-        </div>
-        {queuePreview.length === 0 ? (
-          <PremiumCard className="py-8 text-center">
-            <CheckCircle2 className="h-8 w-8 text-emerald-400/50 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">All caught up — nothing pending review</p>
-          </PremiumCard>
-        ) : (
-          <StaggerList className="space-y-3">
-            {queuePreview.map((post) => (
-              <StaggerItem key={post.id}>
-                <ApprovalCard
-                  post={post}
-                  busy={busy}
-                  actions={{
-                    onApprove: (p) => approveMutation.mutate({ id: p.id }),
-                    onReject: (p) => rejectMutation.mutate({ id: p.id }),
-                    onEdit: () => setLocation("/queue"),
-                  }}
-                />
-              </StaggerItem>
-            ))}
-          </StaggerList>
-        )}
-      </section>
-
-      {/* Active campaigns */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="font-display font-semibold text-lg flex items-center gap-2">
-            <Megaphone className="h-5 w-5 text-primary" />
-            Active campaigns
-          </h2>
-          <Button variant="ghost" size="sm" className="text-xs rounded-lg" onClick={() => setLocation("/campaigns")}>
-            View all
-          </Button>
-        </div>
-        {activeCampaigns.length === 0 ? (
-          <EmptyState
-            icon={Megaphone}
-            title="No campaigns running"
-            description="A campaign turns ideas into a day-by-day content plan and generates every asset."
-            actionLabel="Plan a campaign"
-            onAction={() => setLocation("/campaigns")}
-          />
-        ) : (
-          <StaggerList className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {activeCampaigns.map((campaign) => (
-              <StaggerItem key={campaign.id}>
-                <PremiumCard
-                  interactive
-                  onClick={() => setLocation(`/campaigns/${campaign.id}`)}
-                  className="p-4 sm:p-5 h-full"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-display font-semibold leading-snug">{campaign.name}</p>
-                    <Badge
-                      className={`rounded-lg border-0 capitalize shrink-0 ${CAMPAIGN_STATUS_STYLES[campaign.status] ?? CAMPAIGN_STATUS_STYLES.draft}`}
-                    >
-                      {campaign.status}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-1.5">
-                    {CAMPAIGN_GOAL_LABELS[campaign.goal as CampaignGoal] ?? campaign.goal}
-                  </p>
-                </PremiumCard>
-              </StaggerItem>
-            ))}
-          </StaggerList>
-        )}
-      </section>
-
-      {/* Platform breakdown */}
-      <section className="space-y-3">
-        <h2 className="font-display font-semibold text-lg flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-primary" />
-          Posts by platform
-        </h2>
-        <PremiumCard className="p-4 sm:p-5">
-          {byPlatform && byPlatform.length > 0 ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={byPlatform} barSize={32}>
-                <XAxis
-                  dataKey="platform"
-                  tick={{ fill: "oklch(0.55 0.01 240)", fontSize: 12 }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => PLATFORM_CONFIG[v as keyof typeof PLATFORM_CONFIG]?.label ?? v}
-                />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{
-                    background: "oklch(0.13 0.01 240)",
-                    border: "1px solid oklch(0.22 0.015 240)",
-                    borderRadius: "8px",
-                    color: "oklch(0.95 0.005 240)",
-                    fontSize: "12px",
-                  }}
-                  cursor={{ fill: "oklch(0.18 0.015 240)" }}
-                />
-                <Bar dataKey="published" name="Published" radius={[4, 4, 0, 0]}>
-                  {byPlatform.map((_, i) => (
-                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-[180px] flex items-center justify-center">
-              <p className="text-sm text-muted-foreground">No published posts yet</p>
+      {/* Brand Brain */}
+      <div className="brain-card">
+        <div className="brain-inner">
+          <div className="brain-orb">
+            <Brain className="h-[23px] w-[23px]" />
+          </div>
+          <div className="brain-txt">
+            <div className="brain-eyebrow">Brand Brain · working</div>
+            <div className="brain-line">
+              {pending > 0 ? (
+                <>
+                  Drafted content for <b>{activeClient?.name}</b> and lined up{" "}
+                  <b>
+                    {pending} post{pending === 1 ? "" : "s"}
+                  </b>{" "}
+                  that match its voice. <b>Ready for your review.</b>
+                </>
+              ) : (
+                <>
+                  Tuned to <b>{activeClient?.name}</b>'s voice. Nothing's waiting — generate a fresh
+                  batch whenever you're ready.
+                </>
+              )}
             </div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={() => setLocation("/brand")}>
+            Tune voice
+          </button>
+        </div>
+      </div>
+
+      {/* Approvals + quick actions */}
+      <div className="dash-grid">
+        <div className="co-card">
+          <div className="card-head">
+            <div className="card-title">
+              Needs your approval <span className="num">{approvals.length} of {pending}</span>
+            </div>
+            <a className="card-link" href="#" onClick={(e) => { e.preventDefault(); setLocation("/queue"); }}>
+              Open queue →
+            </a>
+          </div>
+          {approvals.length === 0 ? (
+            <p className="py-6 text-sm text-muted-foreground">All caught up — nothing pending review.</p>
+          ) : (
+            approvals.map((post) => (
+              <div className="appr-row" key={post.id}>
+                <div className={`plat-ic ${platClass(post.platform)}`}>
+                  {PLATFORM_CONFIG[post.platform as Platform]?.icon ?? "📝"}
+                </div>
+                <div className="appr-meta">
+                  <div className="appr-title">{post.title || post.caption || "Untitled post"}</div>
+                  <div className="appr-sub">
+                    {PLATFORM_CONFIG[post.platform as Platform]?.label ?? post.platform} ·{" "}
+                    {post.aiGenerated ? "AI draft" : "manual"} · {formatRelativeTime(post.createdAt)}
+                  </div>
+                </div>
+                <div className="appr-mini">
+                  <button
+                    className="icon-btn ok"
+                    title="Approve"
+                    disabled={busy}
+                    onClick={() => approveMutation.mutate({ id: post.id })}
+                  >
+                    <Check />
+                  </button>
+                  <button
+                    className="icon-btn no"
+                    title="Reject"
+                    disabled={busy}
+                    onClick={() => rejectMutation.mutate({ id: post.id })}
+                  >
+                    <X />
+                  </button>
+                </div>
+              </div>
+            ))
           )}
-        </PremiumCard>
-      </section>
+        </div>
+
+        <div className="co-card">
+          <div className="card-head">
+            <div className="card-title">Quick actions</div>
+          </div>
+          <div className="quick-actions">
+            <button className="qa" onClick={() => setLocation("/brainstorm")}>
+              <span className="qa-ic">
+                <Lightbulb />
+              </span>
+              <span>
+                <span className="qa-t">Brainstorm</span>
+                <span className="qa-s">Swipe fresh ideas</span>
+              </span>
+            </button>
+            <button className="qa" onClick={() => setLocation("/calendar")}>
+              <span className="qa-ic">
+                <CalendarDays />
+              </span>
+              <span>
+                <span className="qa-t">Schedule batch</span>
+                <span className="qa-s">{scheduled} ready to slot</span>
+              </span>
+            </button>
+            <button className="qa" onClick={() => setLocation("/brand")}>
+              <span className="qa-ic">
+                <Brain />
+              </span>
+              <span>
+                <span className="qa-t">Tune voice</span>
+                <span className="qa-s">Brand Brain</span>
+              </span>
+            </button>
+            <button className="qa" onClick={() => setLocation("/analytics")}>
+              <span className="qa-ic">
+                <BarChart3 />
+              </span>
+              <span>
+                <span className="qa-t">Weekly report</span>
+                <span className="qa-s">{published} published</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
