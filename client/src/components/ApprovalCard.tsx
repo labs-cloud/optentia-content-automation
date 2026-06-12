@@ -8,13 +8,11 @@ import {
   Pencil,
   RefreshCcw,
   Send,
+  Sparkles,
   Trash2,
   Trophy,
   X,
 } from "lucide-react";
-import { PremiumCard } from "./PremiumCard";
-import { Badge } from "./ui/badge";
-import { Button } from "./ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,9 +50,35 @@ export type ApprovalActions = {
   onDelete?: (post: ApprovalPost) => void;
 };
 
+/** Maps a live platform id onto the prototype's chip / gradient classes. */
+function platTag(platform: string): string {
+  if (platform === "instagram") return "tag-ig";
+  if (platform.startsWith("linkedin")) return "tag-li";
+  if (platform === "facebook") return "tag-fb";
+  if (platform === "youtube") return "tag-yt";
+  return "tag-default";
+}
+function platGrad(platform: string): string {
+  if (platform === "instagram") return "linear-gradient(135deg,#FF8A8A,#C9468B 60%,#7A3FA0)";
+  if (platform.startsWith("linkedin")) return "linear-gradient(135deg,#2DD4BF,#2A7A8A 70%,#1E5A66)";
+  if (platform === "facebook") return "linear-gradient(135deg,#6AA0F5,#1877F2 70%,#0A3FA0)";
+  if (platform === "youtube") return "linear-gradient(135deg,#FFB36B,#E8635B 70%,#B0394F)";
+  return "linear-gradient(135deg,#9A7BF0,#5A6BE0 60%,#3A4FB0)";
+}
+const STATUS_TAG: Record<string, string> = {
+  pending_approval: "tag-pending",
+  approved: "tag-approved",
+  scheduled: "tag-scheduled",
+  published: "tag-published",
+  rejected: "tag-rejected",
+  failed: "tag-failed",
+  draft: "tag-default",
+};
+
 /**
- * Card-based approval row for the content queue. Primary actions surface per
- * status; everything else lives in the overflow menu.
+ * Approval card for the content queue — the prototype's "approval" design,
+ * wired to the live post actions. Primary actions surface per status; the rest
+ * live in the overflow menu.
  */
 export function ApprovalCard({ post, actions, busy }: { post: ApprovalPost; actions: ApprovalActions; busy?: boolean }) {
   const platform = PLATFORM_CONFIG[post.platform as Platform];
@@ -62,116 +86,106 @@ export function ApprovalCard({ post, actions, busy }: { post: ApprovalPost; acti
   const manual = isManualPlatform(post.platform);
 
   return (
-    <PremiumCard className="overflow-hidden">
-      <div className="flex flex-col sm:flex-row">
-        {post.imageUrl && (
-          <div className="sm:w-44 shrink-0 bg-muted">
-            <img src={post.imageUrl} alt="" className="h-40 sm:h-full w-full object-cover" loading="lazy" />
-          </div>
+    <article className="approval">
+      <div className="approval-img">
+        {post.imageUrl ? (
+          <img src={post.imageUrl} alt="" loading="lazy" />
+        ) : (
+          <div className="grad" style={{ background: platGrad(post.platform) }} />
         )}
-        <div className="flex-1 p-4 sm:p-5 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-2">
-            {platform && (
-              <Badge variant="outline" className={`rounded-md text-[11px] ${platform.borderColor} ${platform.color} ${platform.bgColor}`}>
-                {platform.icon} {platform.label}
-              </Badge>
-            )}
-            {status && (
-              <Badge variant="outline" className={`rounded-md text-[11px] border-0 ${status.bgColor} ${status.color}`}>
-                {status.label}
-              </Badge>
-            )}
-            {manual && (
-              <Badge variant="outline" className="rounded-md text-[11px] border-dashed text-muted-foreground">
-                manual channel
-              </Badge>
-            )}
-            {post.isWinner && (
-              <Badge className="rounded-md text-[11px] border-0 bg-yellow-500/15 text-yellow-400">🏆 Winner</Badge>
-            )}
-            <span className="text-[11px] text-muted-foreground ml-auto shrink-0">
-              {formatRelativeTime(post.createdAt)}
+      </div>
+      <div className="approval-body">
+        <div className="approval-chips">
+          {platform && (
+            <span className={`tag ${platTag(post.platform)}`}>
+              {platform.icon} {platform.label}
             </span>
-          </div>
+          )}
+          {status && <span className={`tag ${STATUS_TAG[post.status] ?? "tag-default"}`}>{status.label}</span>}
+          {post.aiGenerated ? (
+            <span className="tag tag-ai">
+              <Sparkles style={{ width: 11, height: 11 }} /> AI draft
+            </span>
+          ) : (
+            <span className="tag tag-default" style={{ borderStyle: "dashed" }}>
+              manual
+            </span>
+          )}
+          {post.isWinner && <span className="tag tag-approved">🏆 Winner</span>}
+          <span className="tag-time">{formatRelativeTime(post.createdAt)}</span>
+        </div>
 
-          {post.title && <p className="font-medium text-sm leading-snug mb-1">{post.title}</p>}
-          {post.caption && (
-            <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line line-clamp-4">
-              {post.caption}
-            </p>
+        {post.title && <div className="approval-title">{post.title}</div>}
+        {post.caption && <div className="approval-caption">{post.caption}</div>}
+        {post.hashtags && <div className="approval-tags">{post.hashtags}</div>}
+        {post.rejectionReason && (
+          <p className="mt-2 text-xs text-[#ff6b6b]">Rejected: {post.rejectionReason}</p>
+        )}
+        {post.publishError && (
+          <p className="mt-2 break-all text-xs text-[#ff6b6b]">Error: {post.publishError}</p>
+        )}
+
+        <div className="approval-actions">
+          {post.status === "pending_approval" && actions.onApprove && (
+            <button className="btn btn-approve btn-sm" disabled={busy} onClick={() => actions.onApprove!(post)}>
+              <Check /> Approve
+            </button>
           )}
-          {post.hashtags && (
-            <p className="text-xs text-primary/70 mt-1.5 line-clamp-1">{post.hashtags}</p>
+          {post.status === "pending_approval" && actions.onReject && (
+            <button className="btn btn-danger btn-sm" disabled={busy} onClick={() => actions.onReject!(post)}>
+              <X /> Reject
+            </button>
           )}
-          {post.rejectionReason && (
-            <p className="text-xs text-red-400 mt-2">Rejected: {post.rejectionReason}</p>
+          {(post.status === "approved" || post.status === "failed") && !manual && actions.onPublish && (
+            <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => actions.onPublish!(post)}>
+              <Send /> Publish now
+            </button>
           )}
-          {post.publishError && (
-            <p className="text-xs text-destructive mt-2 break-all">Error: {post.publishError}</p>
+          {post.status === "approved" && actions.onSchedule && (
+            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => actions.onSchedule!(post)}>
+              <CalendarClock /> Schedule
+            </button>
+          )}
+          {actions.onEdit && (
+            <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => actions.onEdit!(post)}>
+              <Pencil /> Edit
+            </button>
           )}
 
-          <div className="flex items-center gap-2 mt-4 flex-wrap">
-            {post.status === "pending_approval" && actions.onApprove && (
-              <Button size="sm" disabled={busy} onClick={() => actions.onApprove!(post)} className="rounded-lg">
-                <Check className="h-4 w-4 mr-1" /> Approve
-              </Button>
-            )}
-            {post.status === "pending_approval" && actions.onReject && (
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => actions.onReject!(post)} className="rounded-lg text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-400">
-                <X className="h-4 w-4 mr-1" /> Reject
-              </Button>
-            )}
-            {(post.status === "approved" || post.status === "failed") && !manual && actions.onPublish && (
-              <Button size="sm" disabled={busy} onClick={() => actions.onPublish!(post)} className="rounded-lg">
-                <Send className="h-4 w-4 mr-1" /> Publish now
-              </Button>
-            )}
-            {post.status === "approved" && actions.onSchedule && (
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => actions.onSchedule!(post)} className="rounded-lg">
-                <CalendarClock className="h-4 w-4 mr-1" /> Schedule
-              </Button>
-            )}
-            {actions.onEdit && (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => actions.onEdit!(post)} className="rounded-lg">
-                <Pencil className="h-4 w-4 mr-1" /> Edit
-              </Button>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="ghost" className="rounded-lg ml-auto" disabled={busy} aria-label="More actions">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                {actions.onRegenerate && (
-                  <DropdownMenuItem onClick={() => actions.onRegenerate!(post)} className="cursor-pointer">
-                    <RefreshCcw className="h-4 w-4 mr-2" /> Regenerate
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="btn btn-ghost btn-sm spacer" disabled={busy} aria-label="More actions">
+                <MoreHorizontal />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              {actions.onRegenerate && (
+                <DropdownMenuItem onClick={() => actions.onRegenerate!(post)} className="cursor-pointer">
+                  <RefreshCcw className="h-4 w-4 mr-2" /> Regenerate
+                </DropdownMenuItem>
+              )}
+              {actions.onVariation && (
+                <DropdownMenuItem onClick={() => actions.onVariation!(post)} className="cursor-pointer">
+                  <Copy className="h-4 w-4 mr-2" /> Create variation…
+                </DropdownMenuItem>
+              )}
+              {actions.onMarkWinner && (
+                <DropdownMenuItem onClick={() => actions.onMarkWinner!(post)} className="cursor-pointer">
+                  <Trophy className="h-4 w-4 mr-2" /> {post.isWinner ? "Unmark winner" : "Save as winner"}
+                </DropdownMenuItem>
+              )}
+              {actions.onDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => actions.onDelete!(post)} className="cursor-pointer text-destructive focus:text-destructive">
+                    <Trash2 className="h-4 w-4 mr-2" /> Delete
                   </DropdownMenuItem>
-                )}
-                {actions.onVariation && (
-                  <DropdownMenuItem onClick={() => actions.onVariation!(post)} className="cursor-pointer">
-                    <Copy className="h-4 w-4 mr-2" /> Create variation…
-                  </DropdownMenuItem>
-                )}
-                {actions.onMarkWinner && (
-                  <DropdownMenuItem onClick={() => actions.onMarkWinner!(post)} className="cursor-pointer">
-                    <Trophy className="h-4 w-4 mr-2" /> {post.isWinner ? "Unmark winner" : "Save as winner"}
-                  </DropdownMenuItem>
-                )}
-                {actions.onDelete && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => actions.onDelete!(post)} className="cursor-pointer text-destructive focus:text-destructive">
-                      <Trash2 className="h-4 w-4 mr-2" /> Delete
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
-    </PremiumCard>
+    </article>
   );
 }

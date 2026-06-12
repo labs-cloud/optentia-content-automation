@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -186,57 +185,56 @@ export default function ContentQueue() {
   return (
     <div className="container py-6 sm:py-8 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
-          <CheckSquare className="h-7 w-7 text-primary" />
-          Content Queue
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Review, approve, and publish the pipeline for{" "}
-          <span className="text-foreground font-medium">{activeClient?.name}</span>
-        </p>
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">Operate · {activeClient?.name}</div>
+          <h1 className="page-h1">Approval queue</h1>
+          <div className="topbar-pill">
+            <span className="pulse" /> {(posts ?? []).length} post{(posts ?? []).length === 1 ? "" : "s"} in view
+          </div>
+        </div>
+        <div className="topbar-actions">
+          <Select value={platformFilter} onValueChange={setPlatformFilter}>
+            <SelectTrigger className="w-[170px] rounded-xl">
+              <SelectValue placeholder="All platforms" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All platforms</SelectItem>
+              {PLATFORMS.map((p) => (
+                <SelectItem key={p} value={p}>
+                  {PLATFORM_CONFIG[p].icon} {PLATFORM_CONFIG[p].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+            <SelectTrigger className="w-[170px] rounded-xl">
+              <SelectValue placeholder="All campaigns" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All campaigns</SelectItem>
+              {(campaigns ?? []).map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Select value={platformFilter} onValueChange={setPlatformFilter}>
-          <SelectTrigger className="w-[190px] rounded-xl">
-            <SelectValue placeholder="All platforms" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All platforms</SelectItem>
-            {PLATFORMS.map((p) => (
-              <SelectItem key={p} value={p}>
-                {PLATFORM_CONFIG[p].icon} {PLATFORM_CONFIG[p].label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-          <SelectTrigger className="w-[190px] rounded-xl">
-            <SelectValue placeholder="All campaigns" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All campaigns</SelectItem>
-            {(campaigns ?? []).map((c) => (
-              <SelectItem key={c.id} value={String(c.id)}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Status filter pills */}
+      <div className="filters">
+        {STATUS_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            className={`filter${activeTab === tab.value ? " active" : ""}`}
+            onClick={() => setActiveTab(tab.value)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
-
-      {/* Status Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-muted/50 border border-border/50 h-9 p-1 flex-wrap">
-          {STATUS_TABS.map((tab) => (
-            <TabsTrigger key={tab.value} value={tab.value} className="text-xs h-7 px-3">
-              {tab.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
 
       {/* Post List */}
       {isLoading ? (
@@ -252,7 +250,7 @@ export default function ContentQueue() {
           onAction={() => setLocation("/generate")}
         />
       ) : (
-        <StaggerList className="space-y-3">
+        <StaggerList className="queue-list">
           {posts?.map((post) => (
             <StaggerItem key={post.id}>
               <ApprovalCard

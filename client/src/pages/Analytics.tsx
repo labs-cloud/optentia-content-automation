@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { AIThinkingState } from "@/components/AIThinkingState";
 import { ContentPreviewCard } from "@/components/ContentPreviewCard";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { PremiumCard } from "@/components/PremiumCard";
 import { StatCard } from "@/components/StatCard";
 import { StaggerItem, StaggerList } from "@/components/motion/primitives";
@@ -13,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import {
-  BarChart3,
   CheckCircle2,
   Clock,
   Cpu,
@@ -110,16 +110,11 @@ export default function Analytics() {
 
   return (
     <div className="container py-6 sm:py-8 space-y-8">
-      <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
-          <BarChart3 className="h-7 w-7 text-primary" />
-          Analytics
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Performance and learning loop for{" "}
-          <span className="text-foreground font-medium">{activeClient?.name}</span>
-        </p>
-      </div>
+      <PageHeader
+        eyebrow={activeClient?.name ? `Insights · ${activeClient.name}` : "Insights"}
+        title="Analytics"
+        pill="Performance and learning loop"
+      />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

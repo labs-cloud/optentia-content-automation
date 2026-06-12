@@ -112,30 +112,28 @@ export default function Brainstorm() {
 
   return (
     <div className="container py-6 sm:py-8 space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div className="topbar">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Lightbulb className="h-7 w-7 text-primary" /> Brainstorm
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Swipe ideas for <span className="text-foreground font-medium">{activeClient?.name}</span> — every swipe
-            teaches the AI what this brand likes.
-          </p>
+          <div className="eyebrow">Create · {activeClient?.name}</div>
+          <h1 className="page-h1">Brainstorm</h1>
+          <div className="topbar-pill">
+            <span className="pulse" /> Every swipe teaches the AI what this brand likes
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="topbar-actions">
           <Input
             value={theme}
             onChange={(e) => setTheme(e.target.value)}
             placeholder="Optional theme…"
             className="rounded-xl w-44 sm:w-56"
           />
-          <Button
-            className="rounded-xl"
+          <button
+            className="btn btn-ai"
             disabled={generateMutation.isPending}
             onClick={() => generateMutation.mutate({ clientId, count: 10, theme: theme || undefined })}
           >
-            <Sparkles className="h-4 w-4 mr-1.5" /> Generate ideas
-          </Button>
+            <Sparkles /> Generate ideas
+          </button>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { PLATFORM_CONFIG, CONTENT_PILLARS } from "@/lib/platformUtils";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -192,18 +193,12 @@ export default function AIGenerator() {
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-3xl font-bold">
-            <Sparkles className="size-7 text-primary" />
-            AI Content Generator
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Generating for {activeClient?.name} — topic → caption → visual concept → image → publish
-          </p>
-        </div>
-        <div className="text-sm text-muted-foreground">Step {stepNumber} of 5</div>
-      </div>
+      <PageHeader
+        eyebrow={activeClient?.name ? `Create · ${activeClient.name}` : "Create"}
+        title="AI Content Generator"
+        pill="Topic → caption → concept → image → publish"
+        actions={<div className="text-sm text-muted-foreground">Step {stepNumber} of 5</div>}
+      />
 
       {/* Step 1: Settings */}
       {step === "settings" && (

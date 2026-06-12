@@ -2,6 +2,7 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -100,21 +101,17 @@ export default function HeyGen() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold tracking-tight flex items-center gap-2">
-            <Clapperboard className="h-6 w-6 text-primary" />
-            HeyGen Videos
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Create AI avatar videos with custom scripts for your social channels
-          </p>
-        </div>
-        <Button size="sm" className="gap-2 glow-primary" onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" />
-          New Video Request
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow={activeClient?.name ? `Create · ${activeClient.name}` : "Create"}
+        title="HeyGen Videos"
+        pill="AI avatar videos with custom scripts"
+        actions={
+          <Button size="sm" className="gap-2 glow-primary" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" />
+            New Video Request
+          </Button>
+        }
+      />
 
       {/* Video Request List */}
       {isLoading ? (
