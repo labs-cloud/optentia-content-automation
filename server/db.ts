@@ -83,6 +83,15 @@ export async function getUserByEmail(email: string) {
   return result[0];
 }
 
+/** First user row — fallback for the temporary dev-auth bypass when the owner
+ *  can't be matched by email (Clerk-synced rows don't always store one). */
+export async function getFirstUser() {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).orderBy(users.id).limit(1);
+  return result[0];
+}
+
 export async function createUserWithPassword(params: {
   openId: string;
   name: string;
