@@ -3,6 +3,7 @@ import { BlurView } from "expo-blur";
 import { Redirect, Tabs } from "expo-router";
 import { BarChart3, CalendarDays, CheckSquare, LayoutDashboard, Lightbulb, Megaphone } from "lucide-react-native";
 import { StyleSheet } from "react-native";
+import { ActiveClientProvider } from "@/contexts/ActiveClient";
 import { useTheme } from "@/theme/ThemeProvider";
 
 /** Bottom tab bar mirroring the web BottomNav: Home / Brainstorm / Queue / Campaigns / Calendar. */
@@ -17,7 +18,8 @@ export default function TabsLayout() {
   const inactive = theme === "dark" ? "#a2b4c8" : "#6b7b90";
 
   return (
-    <Tabs
+    <ActiveClientProvider>
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: active,
@@ -58,6 +60,7 @@ export default function TabsLayout() {
         name="calendar"
         options={{ title: "Calendar", tabBarIcon: ({ color, size }) => <CalendarDays color={color} size={size} /> }}
       />
-    </Tabs>
+      </Tabs>
+    </ActiveClientProvider>
   );
 }
