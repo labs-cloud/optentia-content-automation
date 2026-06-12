@@ -24,6 +24,8 @@
   --surface: rgba(255, 255, 255, 0.62);
   --surface-2: rgba(255, 255, 255, 0.82);
   --surface-hover: rgba(255, 255, 255, 0.94);
+  /* Opaque panel — for stacked/overlapping surfaces (e.g. the swipe deck). */
+  --surface-solid: #ffffff;
 
   --card: rgba(255, 255, 255, 0.62);
   --card-foreground: #233246;
@@ -115,6 +117,7 @@
   --surface: rgba(255, 255, 255, 0.06);
   --surface-2: rgba(255, 255, 255, 0.1);
   --surface-hover: rgba(255, 255, 255, 0.14);
+  --surface-solid: #1a2333;
 
   --card: rgba(255, 255, 255, 0.06);
   --card-foreground: #eaf2fb;

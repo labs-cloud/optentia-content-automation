@@ -21,7 +21,7 @@ export function IdeaCard({ idea }: { idea: IdeaCardData }) {
   const typeLabel = IDEA_TYPE_LABELS[idea.type as IdeaType] ?? idea.type;
 
   return (
-    <div className="h-full rounded-3xl border border-border/60 bg-card glass shadow-lg overflow-hidden flex flex-col select-none">
+    <div className="h-full rounded-3xl border border-border/60 bg-[var(--surface-solid)] shadow-[var(--shadow)] overflow-hidden flex flex-col select-none">
       <div className="p-5 pb-3 flex items-center justify-between gap-2">
         <Badge variant="outline" className="rounded-lg border-primary/40 text-primary bg-primary/5">
           <Lightbulb className="h-3 w-3 mr-1" />
