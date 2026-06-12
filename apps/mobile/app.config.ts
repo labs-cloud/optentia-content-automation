@@ -7,7 +7,8 @@ import type { ExpoConfig } from "expo/config";
  */
 const config: ExpoConfig = {
   name: "Content Operator",
-  slug: "content-operator",
+  slug: "optentia-content-automation",
+  owner: "labsopt",
   scheme: "contentoperator",
   version: "0.1.0",
   orientation: "portrait",
@@ -45,7 +46,7 @@ const config: ExpoConfig = {
   extra: {
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
     clerkPublishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
-    // eas: { projectId: "<set by `eas build:configure`>" },
+    eas: { projectId: "d44750eb-bce1-4f08-b691-69c9f576b407" },
   },
 };
 
