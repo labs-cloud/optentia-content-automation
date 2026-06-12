@@ -1,5 +1,5 @@
 {
-  "installCommand": "pnpm install --no-frozen-lockfile",
+  "installCommand": "pnpm install --no-frozen-lockfile --filter .",
   "buildCommand": "pnpm build:vercel",
   "outputDirectory": "dist/public",
   "rewrites": [

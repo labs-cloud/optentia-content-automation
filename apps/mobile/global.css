@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Frosted Vapor tokens — mirror of client/src/index.css.
+   :root = LIGHT (opal); .dark = DARK (vapor), the app default. */
+:root {
+  --canvas: #e7edf6;
+  --background: #e7edf6;
+  --foreground: #233246;
+  --surface: rgba(255, 255, 255, 0.62);
+  --surface-2: rgba(255, 255, 255, 0.82);
+  --surface-solid: #ffffff;
+  --card: rgba(255, 255, 255, 0.62);
+  --primary: #2a7a8a;
+  --primary-foreground: #ffffff;
+  --accent-bright: #1f8ea3;
+  --accent-tint: rgba(42, 122, 138, 0.12);
+  --border: rgba(120, 140, 175, 0.26);
+  --muted: rgba(120, 140, 175, 0.1);
+  --muted-foreground: #6b7b90;
+  --text-strong: #0e1b2c;
+  --gold: #b8923a;
+  --destructive: #ef4444;
+}
+
+.dark {
+  --canvas: #0a1322;
+  --background: #0a1322;
+  --foreground: #eaf2fb;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-2: rgba(255, 255, 255, 0.1);
+  --surface-solid: #1a2333;
+  --card: rgba(255, 255, 255, 0.06);
+  --primary: #5fd0de;
+  --primary-foreground: #06121f;
+  --accent-bright: #7ee4f0;
+  --accent-tint: rgba(95, 208, 222, 0.16);
+  --border: rgba(255, 255, 255, 0.14);
+  --muted: rgba(255, 255, 255, 0.06);
+  --muted-foreground: #a2b4c8;
+  --text-strong: #ffffff;
+  --gold: #e6ce84;
+  --destructive: #ff5b5b;
+}
