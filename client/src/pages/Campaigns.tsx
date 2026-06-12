@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageHeader } from "@/components/PageHeader";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
 import { PLATFORM_CONFIG } from "@/lib/platformUtils";
@@ -121,19 +122,16 @@ export default function Campaigns() {
 
   return (
     <div className="container py-6 sm:py-8 space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Megaphone className="h-7 w-7 text-primary" /> Campaigns
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Coordinated multi-day content runs for <span className="text-foreground font-medium">{activeClient?.name}</span> — not random posts.
-          </p>
-        </div>
-        <Button onClick={() => setWizardOpen(true)} className="rounded-xl">
-          <Plus className="h-4 w-4 mr-1.5" /> New campaign
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow={activeClient?.name ? `Create · ${activeClient.name}` : "Create"}
+        title="Campaigns"
+        pill="Coordinated multi-day content runs"
+        actions={
+          <Button onClick={() => setWizardOpen(true)} className="rounded-xl">
+            <Plus className="h-4 w-4 mr-1.5" /> New campaign
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <AIThinkingState messages={["Loading campaigns…"]} />

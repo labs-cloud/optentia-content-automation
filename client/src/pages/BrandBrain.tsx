@@ -1,6 +1,7 @@
 import { AIThinkingState } from "@/components/AIThinkingState";
 import { BrandProfilePanel, type BrandProfileFields } from "@/components/BrandProfilePanel";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { PremiumCard } from "@/components/PremiumCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,21 +72,17 @@ export default function BrandBrain() {
 
   return (
     <div className="container py-6 sm:py-8 space-y-6 max-w-4xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Brain className="h-7 w-7 text-primary" /> Brand Brain
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            The Brand Operating Profile for <span className="text-foreground font-medium">{activeClient?.name}</span> —
-            every generation runs through this.
-          </p>
-        </div>
-        <Button onClick={() => setGenerateOpen(true)} className="rounded-xl" disabled={generateMutation.isPending}>
-          <Sparkles className="h-4 w-4 mr-1.5" />
-          {profile ? "Regenerate with AI" : "Generate with AI"}
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow={activeClient?.name ? `Create · ${activeClient.name}` : "Create"}
+        title="Brand Brain"
+        pill="Every generation runs through this"
+        actions={
+          <Button onClick={() => setGenerateOpen(true)} className="rounded-xl" disabled={generateMutation.isPending}>
+            <Sparkles className="h-4 w-4 mr-1.5" />
+            {profile ? "Regenerate with AI" : "Generate with AI"}
+          </Button>
+        }
+      />
 
       {generateMutation.isPending ? (
         <PremiumCard>
