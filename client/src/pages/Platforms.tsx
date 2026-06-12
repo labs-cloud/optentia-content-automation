@@ -3,13 +3,14 @@ import { trpc } from "@/lib/trpc";
 import { PLATFORM_CONFIG, isManualPlatform } from "@/lib/platformUtils";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Briefcase, CheckCircle2, Loader2, Settings, Wifi, WifiOff, Zap } from "lucide-react";
+import { Briefcase, CheckCircle2, Loader2, Settings, WifiOff, Zap } from "lucide-react";
 import { useLocation } from "wouter";
 
 type Platform = "instagram" | "linkedin_personal" | "linkedin_company" | "facebook" | "youtube" | "email" | "whatsapp";
@@ -141,31 +142,27 @@ export default function Platforms() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-display font-bold tracking-tight flex items-center gap-2">
-            <Wifi className="h-6 w-6 text-primary" />
-            Platform Connections
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Connections for {activeClient?.name} — manage API credentials and monitor connection status per channel
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5 text-xs shrink-0"
-          onClick={() => checkAllMutation.mutate({ clientId })}
-          disabled={checkAllMutation.isPending}
-        >
-          {checkAllMutation.isPending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Zap className="h-3.5 w-3.5" />
-          )}
-          Check all
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow={activeClient?.name ? `Connections · ${activeClient.name}` : "Connections"}
+        title="Platform Connections"
+        pill="API credentials and connection status"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 text-xs shrink-0"
+            onClick={() => checkAllMutation.mutate({ clientId })}
+            disabled={checkAllMutation.isPending}
+          >
+            {checkAllMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Zap className="h-3.5 w-3.5" />
+            )}
+            Check all
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {PLATFORM_ORDER.map((platform) => {
