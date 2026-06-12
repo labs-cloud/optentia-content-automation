@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { DEV_BYPASS } from "@/lib/env";
 import { trpc } from "@/lib/trpc";
 
 export type ClientSummary = {
@@ -32,7 +33,7 @@ export function ActiveClientProvider({ children }: { children: ReactNode }) {
   const { isSignedIn } = useAuth();
   const { data, isLoading } = trpc.clients.list.useQuery(undefined, {
     staleTime: 60_000,
-    enabled: isSignedIn === true,
+    enabled: isSignedIn === true || DEV_BYPASS,
   });
   const clients = useMemo(() => (data ?? []) as ClientSummary[], [data]);
 

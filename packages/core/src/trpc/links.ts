@@ -15,6 +15,8 @@ export type BuildLinksOptions = {
    * getToken() result so the server's getAuth() reads the Authorization header.
    */
   getToken?: () => Promise<string | null>;
+  /** Extra static headers (e.g. a dev-bypass token) attached to every request. */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -30,6 +32,7 @@ export function buildTRPCLinks(opts: BuildLinksOptions): TRPCLink<AppRouter>[] {
         const headers = new Headers(init?.headers as HeadersInit | undefined);
         const token = await opts.getToken?.();
         if (token) headers.set("Authorization", `Bearer ${token}`);
+        for (const [k, v] of Object.entries(opts.headers ?? {})) headers.set(k, v);
         return fetch(input as RequestInfo, {
           ...init,
           headers,

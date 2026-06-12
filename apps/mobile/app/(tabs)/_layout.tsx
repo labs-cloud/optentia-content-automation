@@ -3,6 +3,7 @@ import { BlurView } from "expo-blur";
 import { Redirect, Tabs } from "expo-router";
 import { BarChart3, CalendarDays, CheckSquare, LayoutDashboard, Lightbulb, Megaphone } from "lucide-react-native";
 import { StyleSheet } from "react-native";
+import { DEV_BYPASS } from "@/lib/env";
 import { useTheme } from "@/theme/ThemeProvider";
 
 /** Bottom tab bar mirroring the web BottomNav: Home / Brainstorm / Queue / Campaigns / Calendar. */
@@ -10,8 +11,10 @@ export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { theme } = useTheme();
 
-  if (!isLoaded) return null;
-  if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
+  if (!DEV_BYPASS) {
+    if (!isLoaded) return null;
+    if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
+  }
 
   const active = theme === "dark" ? "#7ee4f0" : "#1f8ea3";
   const inactive = theme === "dark" ? "#a2b4c8" : "#6b7b90";
