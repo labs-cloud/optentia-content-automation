@@ -2,6 +2,7 @@ import { AIThinkingState } from "@/components/AIThinkingState";
 import { ContentPreviewCard } from "@/components/ContentPreviewCard";
 import { EmptyState } from "@/components/EmptyState";
 import { PremiumCard } from "@/components/PremiumCard";
+import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useClientScope } from "@/contexts/ActiveClientContext";
@@ -78,38 +79,40 @@ export default function CampaignDetail() {
         <ArrowLeft className="h-4 w-4 mr-1" /> Campaigns
       </Button>
 
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">{campaign.name}</h1>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground mt-2">
-            <span className="inline-flex items-center gap-1.5">
-              <Target className="h-4 w-4" /> {CAMPAIGN_GOAL_LABELS[campaign.goal as CampaignGoal] ?? campaign.goal}
+      <PageHeader
+        eyebrow="Campaign"
+        title={campaign.name}
+        actions={
+          plannedCount > 0 ? (
+            <Button
+              className="rounded-xl"
+              disabled={generateContent.isPending}
+              onClick={() => generateContent.mutate({ clientId, campaignId: campaign.id })}
+            >
+              <Sparkles className="h-4 w-4 mr-1.5" />
+              Generate all ({plannedCount})
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm text-muted-foreground -mt-2">
+        <span className="inline-flex items-center gap-1.5">
+          <Target className="h-4 w-4" /> {CAMPAIGN_GOAL_LABELS[campaign.goal as CampaignGoal] ?? campaign.goal}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarRange className="h-4 w-4" /> {campaign.durationDays} days
+        </span>
+        <span className="inline-flex items-center gap-1">
+          {platforms.map((p) => (
+            <span key={p} title={PLATFORM_CONFIG[p as Platform]?.label}>
+              {PLATFORM_CONFIG[p as Platform]?.icon}
             </span>
-            <span className="inline-flex items-center gap-1.5">
-              <CalendarRange className="h-4 w-4" /> {campaign.durationDays} days
-            </span>
-            <span className="inline-flex items-center gap-1">
-              {platforms.map((p) => (
-                <span key={p} title={PLATFORM_CONFIG[p as Platform]?.label}>
-                  {PLATFORM_CONFIG[p as Platform]?.icon}
-                </span>
-              ))}
-            </span>
-            <Badge className={cn("rounded-lg border-0 capitalize", ITEM_STATUS_STYLES[campaign.status] ?? "bg-muted/50 text-muted-foreground")}>
-              {campaign.status}
-            </Badge>
-          </div>
-        </div>
-        {plannedCount > 0 && (
-          <Button
-            className="rounded-xl"
-            disabled={generateContent.isPending}
-            onClick={() => generateContent.mutate({ clientId, campaignId: campaign.id })}
-          >
-            <Sparkles className="h-4 w-4 mr-1.5" />
-            Generate all ({plannedCount})
-          </Button>
-        )}
+          ))}
+        </span>
+        <Badge className={cn("rounded-lg border-0 capitalize", ITEM_STATUS_STYLES[campaign.status] ?? "bg-muted/50 text-muted-foreground")}>
+          {campaign.status}
+        </Badge>
       </div>
 
       {/* Thesis */}

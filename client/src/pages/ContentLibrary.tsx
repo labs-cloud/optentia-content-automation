@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { PLATFORM_CONFIG, STATUS_CONFIG, formatRelativeTime, truncate } from "@/lib/platformUtils";
 import { useClientScope } from "@/contexts/ActiveClientContext";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -89,15 +90,11 @@ export default function ContentLibrary() {
 
   return (
     <div className="p-6 space-y-6 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-display font-bold tracking-tight flex items-center gap-2">
-          <FolderOpen className="h-6 w-6 text-primary" />
-          Content Library
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          All generated and published content in one place
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Operate"
+        title="Content Library"
+        pill="All generated and published content"
+      />
 
       {/* Filters */}
       <div className="flex gap-3 flex-wrap">

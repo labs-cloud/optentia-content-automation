@@ -1,3 +1,4 @@
+import { PageHeader } from "@/components/PageHeader";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,12 +71,11 @@ export default function Settings() {
 
   return (
     <div className="container py-6 sm:py-8 max-w-3xl space-y-6">
-      <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Manage your appearance, account, and defaults for new content.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Account"
+        title="Settings"
+        pill="Appearance, account, and content defaults"
+      />
 
       {/* Appearance */}
       <Card className="rounded-2xl border-border">

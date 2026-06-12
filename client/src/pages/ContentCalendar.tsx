@@ -4,6 +4,7 @@ import { PLATFORM_CONFIG, STATUS_CONFIG, type Platform } from "@/lib/platformUti
 import { RECOMMENDED_POSTING_TIMES } from "@shared/platforms";
 import { useClientScope } from "@/contexts/ActiveClientContext";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -106,15 +107,11 @@ export default function ContentCalendar() {
 
   return (
     <div className="p-6 space-y-6 max-w-6xl">
-      <div>
-        <h1 className="text-2xl font-display font-bold tracking-tight flex items-center gap-2">
-          <CalendarDays className="h-6 w-6 text-primary" />
-          Content Calendar
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          View and manage your content schedule by date
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Operate"
+        title="Content Calendar"
+        pill="Your content schedule by date"
+      />
 
       {/* Calendar Header */}
       <div className="flex items-center justify-between">

@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { PLATFORM_CONFIG, CRON_PRESETS, isManualPlatform } from "@/lib/platformUtils";
 import { useClientScope } from "@/contexts/ActiveClientContext";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -118,21 +119,17 @@ export default function Schedules() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold tracking-tight flex items-center gap-2">
-            <Timer className="h-6 w-6 text-primary" />
-            Schedules
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Automated content generation and publishing schedules
-          </p>
-        </div>
-        <Button size="sm" className="gap-2 glow-primary" onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4" />
-          New Schedule
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Automate"
+        title="Schedules"
+        pill="Automated generation and publishing"
+        actions={
+          <Button size="sm" className="gap-2 glow-primary" onClick={() => setShowCreate(true)}>
+            <Plus className="h-4 w-4" />
+            New Schedule
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <div className="space-y-3">

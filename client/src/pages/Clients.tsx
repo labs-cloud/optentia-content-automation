@@ -1,5 +1,6 @@
 import { AIThinkingState } from "@/components/AIThinkingState";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { PremiumCard } from "@/components/PremiumCard";
 import { StaggerItem, StaggerList } from "@/components/motion/primitives";
 import { Badge } from "@/components/ui/badge";
@@ -121,17 +122,16 @@ export default function Clients() {
 
   return (
     <div className="container py-6 sm:py-8 space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Clients</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Each client is its own workspace — content, brand brain, campaigns, and channels.
-          </p>
-        </div>
-        <Button onClick={openCreate} className="rounded-xl">
-          <Plus className="h-4 w-4 mr-1.5" /> Add client
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Clients"
+        pill="Each client is its own workspace"
+        actions={
+          <Button onClick={openCreate} className="rounded-xl">
+            <Plus className="h-4 w-4 mr-1.5" /> Add client
+          </Button>
+        }
+      />
 
       {isLoading ? (
         <AIThinkingState messages={["Loading workspaces…"]} />
