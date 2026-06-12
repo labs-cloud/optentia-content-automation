@@ -29,7 +29,7 @@ export async function createContext(
     // native app can load data without a login. Only ever set this on a
     // throwaway preview deployment; REMOVE before any real release.
     const ownerEmail = process.env.OWNER_EMAIL ?? "hershey@optentia.com";
-    user = (await db.getUserByEmail(ownerEmail)) ?? null;
+    user = (await db.getUserByEmail(ownerEmail)) ?? (await db.getFirstUser()) ?? null;
   }
 
   return { req: opts.req, res: opts.res, user };
