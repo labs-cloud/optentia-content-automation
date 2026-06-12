@@ -1,0 +1,26 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@optentia/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@optentia/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@shared/*": [
+        "../../shared/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "nativewind-env.d.ts"
+  ]
+}

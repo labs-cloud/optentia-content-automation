@@ -23,6 +23,13 @@ export async function createContext(
     } else {
       await db.upsertUser({ openId: userId, lastSignedIn: new Date() });
     }
+  } else if (process.env.DEV_AUTH_BYPASS === "1") {
+    // TEMPORARY dev-only auth bypass: when DEV_AUTH_BYPASS=1 is set on the
+    // deployment, unauthenticated requests resolve to the owner account so the
+    // native app can load data without a login. Only ever set this on a
+    // throwaway preview deployment; REMOVE before any real release.
+    const ownerEmail = process.env.OWNER_EMAIL ?? "hershey@optentia.com";
+    user = (await db.getUserByEmail(ownerEmail)) ?? null;
   }
 
   return { req: opts.req, res: opts.res, user };
