@@ -4,17 +4,23 @@
     "strict": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": ["./src/*"],
-      "@optentia/core": ["../../packages/core/src/index.ts"],
-      "@optentia/core/*": ["../../packages/core/src/*"],
-      "@shared/*": ["../../shared/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@optentia/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@optentia/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@shared/*": [
+        "../../shared/*"
+      ]
     }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts",
     "nativewind-env.d.ts"
   ]
 }

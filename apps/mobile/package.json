@@ -11,14 +11,15 @@
     "build:dev": "eas build --profile development --platform ios",
     "build:preview": "eas build --profile preview --platform ios",
     "build:prod": "eas build --profile production --platform ios",
-    "submit": "eas submit --platform ios --profile production"
+    "submit": "eas submit --platform ios --profile production",
+    "android": "expo run:android"
   },
   "dependencies": {
-    "@optentia/core": "workspace:*",
     "@clerk/clerk-expo": "^2.2.0",
     "@expo-google-fonts/dm-mono": "^0.2.3",
     "@expo-google-fonts/playfair-display": "^0.2.3",
     "@expo-google-fonts/sora": "^0.2.3",
+    "@optentia/core": "workspace:*",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@tanstack/react-query": "^5.62.0",
     "@trpc/client": "^11.0.0",
@@ -38,7 +39,7 @@
     "lucide-react-native": "^0.468.0",
     "nativewind": "4.1.23",
     "react": "18.3.1",
-    "react-native": "0.76.5",
+    "react-native": "0.76.9",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-pager-view": "6.5.1",
     "react-native-reanimated": "~3.16.1",
