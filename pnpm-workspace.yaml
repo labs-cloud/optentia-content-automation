@@ -2,3 +2,9 @@ packages:
   - "."
   - "packages/*"
   - "apps/*"
+
+# Pin NativeWind to 4.1.x: 4.2.x's react-native-css-interop babel requires
+# react-native-worklets (Reanimated 4 / RN 0.78+), which is incompatible with
+# Expo SDK 52 / RN 0.76. Keeps hoisting from floating it newer.
+overrides:
+  nativewind: "4.1.23"
