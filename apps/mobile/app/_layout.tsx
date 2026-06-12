@@ -24,7 +24,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuroraBackground } from "@/components/AuroraBackground";
 import { ActiveClientProvider } from "@/contexts/ActiveClient";
-import { API_BASE_URL, CLERK_PUBLISHABLE_KEY, DEV_BYPASS_TOKEN } from "@/lib/env";
+import { API_BASE_URL, CLERK_PUBLISHABLE_KEY } from "@/lib/env";
 import { tokenCache } from "@/lib/tokenCache";
 import { trpc } from "@/lib/trpc";
 import { ThemeProvider } from "@/theme/ThemeProvider";
@@ -40,7 +40,6 @@ function ApiProviders({ children }: { children: ReactNode }) {
       links: buildTRPCLinks({
         baseUrl: API_BASE_URL,
         getToken: () => getToken(),
-        headers: DEV_BYPASS_TOKEN ? { "x-dev-bypass": DEV_BYPASS_TOKEN } : undefined,
       }),
     }),
   );

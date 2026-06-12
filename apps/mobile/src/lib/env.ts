@@ -9,10 +9,9 @@ const extra = (Constants.expoConfig?.extra ?? {}) as {
 export const API_BASE_URL: string =
   process.env.EXPO_PUBLIC_API_BASE_URL ?? extra.apiBaseUrl ?? "";
 
-/** TEMPORARY dev bypass: when set, the app skips Clerk sign-in and sends this
- *  token as x-dev-bypass so the server resolves the owner account. */
-export const DEV_BYPASS_TOKEN: string = process.env.EXPO_PUBLIC_DEV_BYPASS_TOKEN ?? "";
-export const DEV_BYPASS = DEV_BYPASS_TOKEN.length > 0;
+/** TEMPORARY dev bypass on/off flag. When EXPO_PUBLIC_DEV_BYPASS=1 the app skips
+ *  Clerk sign-in; the matching server flag is DEV_AUTH_BYPASS=1. */
+export const DEV_BYPASS = (process.env.EXPO_PUBLIC_DEV_BYPASS ?? "") === "1";
 
 // ClerkProvider needs a valid-FORMAT key to mount even when we never sign in.
 // In bypass mode, fall back to a harmless dummy (points at clerk.example.com,
