@@ -40,7 +40,7 @@ const config: ExpoConfig = {
     ],
   ],
   experiments: {
-    typedRoutes: true,
+    typedRoutes: false,
   },
   extra: {
     apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,

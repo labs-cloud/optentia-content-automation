@@ -3,13 +3,16 @@ import { StatCard } from "@/components/StatCard";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClient";
 import { trpc } from "@/lib/trpc";
 import { formatRelativeTime } from "@optentia/core";
-import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { MoreHorizontal } from "lucide-react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Dashboard() {
   const { activeClient } = useActiveClient();
   const { clientId, enabled } = useClientScope();
   const utils = trpc.useUtils();
+  const router = useRouter();
 
   const summary = trpc.analytics.summary.useQuery({ clientId }, { enabled, refetchInterval: 30_000 });
   const pending = trpc.posts.pendingApproval.useQuery({ clientId }, { enabled });
@@ -42,7 +45,16 @@ export default function Dashboard() {
             </Text>
             <Text className="mt-1 text-sm text-muted-foreground">What needs you today</Text>
           </View>
-          <ClientSwitcher />
+          <View className="items-end gap-2">
+            <ClientSwitcher />
+            <Pressable
+              onPress={() => router.push("/(more)/menu")}
+              className="flex-row items-center gap-1 rounded-xl border border-border bg-surface px-2.5 py-1.5"
+            >
+              <MoreHorizontal size={16} color="#8a9bb0" />
+              <Text className="text-xs text-muted-foreground">More</Text>
+            </Pressable>
+          </View>
         </View>
 
         {!enabled ? (

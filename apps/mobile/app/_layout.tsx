@@ -15,7 +15,7 @@ import {
 } from "@expo-google-fonts/sora";
 import { buildTRPCLinks } from "@optentia/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Slot } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState, type ReactNode } from "react";
@@ -23,6 +23,7 @@ import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuroraBackground } from "@/components/AuroraBackground";
+import { ActiveClientProvider } from "@/contexts/ActiveClient";
 import { API_BASE_URL, CLERK_PUBLISHABLE_KEY } from "@/lib/env";
 import { tokenCache } from "@/lib/tokenCache";
 import { trpc } from "@/lib/trpc";
@@ -73,11 +74,19 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <ThemeProvider>
             <ApiProviders>
-              <StatusBar style="light" />
-              <View style={{ flex: 1 }}>
-                <AuroraBackground />
-                <Slot />
-              </View>
+              <ActiveClientProvider>
+                <StatusBar style="light" />
+                <View style={{ flex: 1 }}>
+                  <AuroraBackground />
+                  <Stack
+                    screenOptions={{
+                      headerShown: false,
+                      contentStyle: { backgroundColor: "transparent" },
+                      animation: "slide_from_right",
+                    }}
+                  />
+                </View>
+              </ActiveClientProvider>
             </ApiProviders>
           </ThemeProvider>
         </SafeAreaProvider>
