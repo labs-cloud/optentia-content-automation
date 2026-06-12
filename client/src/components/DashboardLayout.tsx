@@ -1,7 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { ActiveClientProvider } from "@/contexts/ActiveClientContext";
+import { ActiveClientProvider, useActiveClient } from "@/contexts/ActiveClientContext";
 import { useIsMobile } from "@/hooks/useMobile";
-import { SignIn, useClerk, useUser } from "@clerk/clerk-react";
+import { useClerk, useUser } from "@clerk/clerk-react";
 import {
   BarChart3,
   Brain,
@@ -10,6 +10,7 @@ import {
   FolderOpen,
   LogOut,
   Menu,
+  Settings,
   Sparkles,
   Timer,
   Wifi,
@@ -21,6 +22,8 @@ import { ClientSwitcher } from "./ClientSwitcher";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { FloatingActionButton } from "./FloatingActionButton";
 import { FloatingDock } from "./FloatingDock";
+import { Landing } from "./Landing";
+import { Onboarding } from "./Onboarding";
 import { ThemeToggle } from "./ThemeToggle";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Button } from "./ui/button";
@@ -43,6 +46,7 @@ const moreRoutes = [
   { icon: Wifi, label: "Platforms", path: "/platforms" },
   { icon: Timer, label: "Schedules", path: "/schedules" },
   { icon: Clapperboard, label: "HeyGen Videos", path: "/heygen" },
+  { icon: Settings, label: "Settings", path: "/settings" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -53,13 +57,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Wait for Clerk to load before deciding what to render.
   if (!isLoaded || loading) return <DashboardLayoutSkeleton />;
 
-  // Not signed in to Clerk yet — show the SignIn UI.
+  // Not signed in — show the branded landing page (sign-in lives behind its CTA).
   if (!isSignedIn) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <SignIn routing="hash" signUpUrl="#/sign-up" />
-      </div>
-    );
+    return <Landing />;
   }
 
   // Signed in to Clerk but the backend couldn't load the user.
@@ -96,6 +96,12 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const isMobile = useIsMobile();
+  const { clients, isLoading: clientsLoading } = useActiveClient();
+
+  // First-run: signed in but no client workspaces yet → guided onboarding.
+  if (!clientsLoading && clients.length === 0) {
+    return <Onboarding />;
+  }
 
   if (isMobile) {
     return (
