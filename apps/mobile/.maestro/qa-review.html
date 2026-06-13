@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Content Operator — Screen Review</title>
+<!--
+  Drop this file into the folder that contains the Maestro output, alongside:
+      qa-review.html
+      dark/   01-home.png … 15-settings.png
+      light/  01-home.png … 15-settings.png
+  Open it in any browser. Each card shows the real screen; add design/function
+  notes (auto-saved on this device); use the Dark/Light toggle to compare modes;
+  hit "Copy report" and paste it back into the Claude thread.
+-->
+<style>
+  :root{--bg:#0a1322;--surface:rgba(255,255,255,.04);--surface2:rgba(255,255,255,.06);
+    --border:rgba(255,255,255,.10);--border-soft:rgba(255,255,255,.06);
+    --text:#e6ecf5;--muted:#8a99b0;--strong:#fff;--accent:#5fe0d0;--accent2:#5aa8ff;
+    --ai:linear-gradient(115deg,#5fe0d0,#5aa8ff 44%,#b79cf5 72%,#e6ce84);
+    --r:18px;--mono:ui-monospace,SFMono-Regular,Menlo,monospace;--red:#ff6b6b;--yellow:#f59e0b;--blue:#5aa8ff;}
+  [data-theme="light"]{--bg:#eef2f8;--surface:rgba(255,255,255,.7);--surface2:rgba(255,255,255,.9);
+    --border:rgba(20,30,50,.12);--border-soft:rgba(20,30,50,.07);--text:#1b2536;--muted:#5a6678;--strong:#0e1b2c;--accent:#2bb3a3;--accent2:#3a7afe;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--text);
+    background:radial-gradient(120% 80% at 0% 0%,rgba(95,224,208,.10),transparent 55%),
+      radial-gradient(120% 80% at 100% 0%,rgba(143,182,255,.12),transparent 55%),var(--bg);min-height:100vh;padding-bottom:120px}
+  header{position:sticky;top:0;z-index:10;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    background:color-mix(in srgb,var(--bg) 82%,transparent);border-bottom:1px solid var(--border);
+    padding:14px 16px;padding-top:max(14px,env(safe-area-inset-top))}
+  .htop{display:flex;align-items:center;justify-content:space-between;gap:10px;max-width:980px;margin:0 auto}
+  h1{font-size:16px;margin:0;color:var(--strong);font-weight:700}
+  .eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .progress{font-family:var(--mono);font-size:11px;color:var(--accent)}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+  .seg button{background:none;border:none;color:var(--muted);font-size:11px;padding:7px 12px;cursor:pointer;font-family:var(--mono);letter-spacing:.06em}
+  .seg button.on{background:var(--surface2);color:var(--strong)}
+  .wrap{max-width:980px;margin:0 auto;padding:16px}
+  .intro{font-size:13px;color:var(--muted);line-height:1.6;margin:4px 0 18px}
+  .screen{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);display:grid;grid-template-columns:300px 1fr;gap:18px}
+  @media(max-width:760px){.screen{grid-template-columns:1fr}}
+  .screen.done{border-color:color-mix(in srgb,var(--accent) 50%,var(--border))}
+  .shot{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--border-soft);background:#000;min-height:120px}
+  .shot img{width:100%;display:block}
+  .shot .missing{padding:40px 14px;text-align:center;color:var(--muted);font-size:12px;font-family:var(--mono)}
+  .right{min-width:0}
+  .sh{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .sid{font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:.1em}
+  .stitle{font-size:17px;font-weight:600;color:var(--strong);margin-top:3px}
+  .scount{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+  .comments{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-direction:column;gap:8px}
+  .c{background:var(--surface2);border:1px solid var(--border-soft);border-radius:12px;padding:10px 12px;font-size:13px;position:relative}
+  .c .meta{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
+  .tag{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:999px;border:1px solid var(--border)}
+  .tag.design{color:var(--accent2);border-color:color-mix(in srgb,var(--accent2) 40%,transparent)}
+  .tag.fn{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+  .tag.s1{color:var(--red)}.tag.s2{color:var(--yellow)}.tag.s3{color:var(--blue)}
+  .c .body{color:var(--text);white-space:pre-wrap;word-break:break-word}
+  .c .del{position:absolute;top:8px;right:9px;color:var(--muted);background:none;border:none;font-size:15px;cursor:pointer}
+  .add{margin-top:11px;display:flex;flex-direction:column;gap:8px}
+  textarea{width:100%;min-height:50px;resize:vertical;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);padding:10px 12px;font-size:14px;font-family:inherit}
+  textarea:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .addbtn{margin-left:auto;background:var(--ai);color:#06121f;border:none;border-radius:10px;padding:9px 16px;font-weight:600;font-size:13px;cursor:pointer}
+  .bar{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));
+    display:flex;gap:10px;justify-content:center;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    background:color-mix(in srgb,var(--bg) 80%,transparent);border-top:1px solid var(--border)}
+  .bar button{flex:1;max-width:240px;border-radius:12px;padding:13px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text)}
+  .bar .primary{background:var(--ai);color:#06121f;border:none}
+  .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#0e1b2c;color:#fff;border:1px solid var(--accent);padding:10px 16px;border-radius:12px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:30}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="htop">
+    <div><div class="eyebrow">Content Operator · Screen Review</div><h1>Mark up the real screens</h1></div>
+    <div class="row">
+      <div class="seg" id="mode"><button data-v="dark" class="on">dark</button><button data-v="light">light</button></div>
+      <span class="progress" id="progress">0 notes</span>
+    </div>
+  </div>
+</header>
+<div class="wrap">
+  <p class="intro">Each card shows the actual captured screen. Add a note for anything off — pick
+  <b>design</b> or <b>function</b> + severity. Toggle <b>dark/light</b> up top to compare modes.
+  Notes auto-save on this device; tap <b>Copy report</b> and paste it back to me.</p>
+  <div id="list"></div>
+</div>
+<div class="bar">
+  <button id="copyBtn" class="primary">📋 Copy report</button>
+  <button id="downloadBtn">⬇︎ .md</button>
+  <button id="clearBtn">Clear</button>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const SCREENS = [
+  {id:"HOME",file:"01-home",title:"Home / Dashboard"},
+  {id:"BRAIN",file:"02-brainstorm",title:"Brainstorm"},
+  {id:"QUEUE",file:"03-queue",title:"Queue"},
+  {id:"CAMP",file:"04-campaigns",title:"Campaigns"},
+  {id:"CAL",file:"05-calendar",title:"Calendar"},
+  {id:"MENU",file:"06-more-menu",title:"More menu"},
+  {id:"CLIENTS",file:"07-clients",title:"Clients"},
+  {id:"BRAND",file:"08-brand",title:"Brand Brain"},
+  {id:"GEN",file:"09-generate",title:"AI Generator"},
+  {id:"ANALYTICS",file:"10-analytics",title:"Analytics"},
+  {id:"LIBRARY",file:"11-library",title:"Content Library"},
+  {id:"PLATFORMS",file:"12-platforms",title:"Platforms"},
+  {id:"SCHED",file:"13-schedules",title:"Schedules"},
+  {id:"HEYGEN",file:"14-heygen",title:"HeyGen Videos"},
+  {id:"SET",file:"15-settings",title:"Settings"},
+];
+const KEY="co-qa-review-v1";
+let store=JSON.parse(localStorage.getItem(KEY)||"{}");
+const draft={};
+let mode=localStorage.getItem("co-qa-review-mode")||"dark";
+const save=()=>localStorage.setItem(KEY,JSON.stringify(store));
+const el=h=>{const t=document.createElement("template");t.innerHTML=h.trim();return t.content.firstChild;};
+const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const SEV={1:"🔴",2:"🟡",3:"🔵"};
+function render(){
+  const list=document.getElementById("list");list.innerHTML="";let total=0;
+  SCREENS.forEach(s=>{
+    const notes=store[s.id]||[];total+=notes.length;
+    const d=draft[s.id]||(draft[s.id]={type:"design",sev:2});
+    const card=el(`<div class="screen ${notes.length?'done':''}">
+      <div class="shot"><img src="${mode}/${s.file}.png" alt="${s.title}"
+        onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
+        <div class="missing" style="display:none">no ${mode}/${s.file}.png<br>(run the Maestro sweep first)</div></div>
+      <div class="right">
+        <div class="sh"><div><div class="stitle">${s.title}</div><div class="sid">${s.id} · ${s.file}</div></div>
+          <div class="scount">${notes.length?notes.length+" note"+(notes.length>1?"s":""):"—"}</div></div>
+        <ul class="comments"></ul>
+        <div class="add">
+          <textarea placeholder="What's off on ${esc(s.title)}? (expected: …)"></textarea>
+          <div class="row">
+            <div class="seg type"><button data-v="design" class="${d.type==='design'?'on':''}">design</button><button data-v="function" class="${d.type==='function'?'on':''}">function</button></div>
+            <div class="seg sev"><button data-v="1" class="${d.sev==1?'on':''}">🔴</button><button data-v="2" class="${d.sev==2?'on':''}">🟡</button><button data-v="3" class="${d.sev==3?'on':''}">🔵</button></div>
+            <button class="addbtn">Add note</button>
+          </div>
+        </div>
+      </div></div>`);
+    const ul=card.querySelector(".comments");
+    notes.forEach((n,idx)=>{
+      const li=el(`<li class="c"><div class="meta"><span class="tag ${n.type==='design'?'design':'fn'}">${n.type}</span><span class="tag s${n.sev}">${SEV[n.sev]}</span></div><div class="body">${esc(n.text)}</div><button class="del">✕</button></li>`);
+      li.querySelector(".del").addEventListener("click",()=>{store[s.id].splice(idx,1);if(!store[s.id].length)delete store[s.id];save();render();});
+      ul.appendChild(li);
+    });
+    card.querySelectorAll(".seg.type button").forEach(b=>b.addEventListener("click",()=>{d.type=b.dataset.v;render();}));
+    card.querySelectorAll(".seg.sev button").forEach(b=>b.addEventListener("click",()=>{d.sev=+b.dataset.v;render();}));
+    const ta=card.querySelector("textarea");
+    card.querySelector(".addbtn").addEventListener("click",()=>{const t=ta.value.trim();if(!t)return;(store[s.id]=store[s.id]||[]).push({type:d.type,sev:d.sev,text:t});save();render();});
+    list.appendChild(card);
+  });
+  document.getElementById("progress").textContent=total+(total===1?" note":" notes");
+}
+function report(){
+  let out="# Content Operator — QA findings\n_"+new Date().toLocaleString()+"_\n\n";let any=false;
+  SCREENS.forEach(s=>{const notes=store[s.id]||[];if(!notes.length)return;any=true;out+=`## ${s.title} (${s.id})\n`;notes.forEach(n=>out+=`- ${SEV[n.sev]} ${n.type}: ${n.text}\n`);out+="\n";});
+  if(!any)out+="_No notes yet._\n";return out;
+}
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1800);}
+document.getElementById("copyBtn").addEventListener("click",async()=>{const r=report();try{await navigator.clipboard.writeText(r);toast("Report copied — paste it back to me");}catch{const ta=document.createElement("textarea");ta.value=r;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove();toast("Report copied");}});
+document.getElementById("downloadBtn").addEventListener("click",()=>{const b=new Blob([report()],{type:"text/markdown"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="qa-findings.md";a.click();});
+document.getElementById("clearBtn").addEventListener("click",()=>{if(confirm("Clear all notes on this device?")){store={};save();render();}});
+document.querySelectorAll("#mode button").forEach(b=>b.addEventListener("click",()=>{mode=b.dataset.v;localStorage.setItem("co-qa-review-mode",mode);document.querySelectorAll("#mode button").forEach(x=>x.classList.toggle("on",x===b));document.documentElement.dataset.theme=mode;render();}));
+document.documentElement.dataset.theme=mode;
+document.querySelectorAll("#mode button").forEach(b=>b.classList.toggle("on",b.dataset.v===mode));
+render();
+</script>
+</body>
+</html>
