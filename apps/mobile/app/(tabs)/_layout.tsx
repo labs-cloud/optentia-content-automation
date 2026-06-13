@@ -29,8 +29,12 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      // Without this the tab navigator paints an opaque white scene over the
+      // aurora, so tab screens render white even in dark mode.
+      sceneContainerStyle={{ backgroundColor: "transparent" }}
       screenOptions={{
         headerShown: false,
+        sceneStyle: { backgroundColor: "transparent" },
         tabBarActiveTintColor: active,
         tabBarInactiveTintColor: inactive,
         tabBarLabelStyle: { fontSize: 10, fontFamily: "DMMono_400Regular", marginTop: 2 },
