@@ -1,0 +1,96 @@
+# Maestro QA sweep — Content Operator (iOS Simulator)
+#
+# Drives every screen and captures a screenshot of each. Run on a booted
+# simulator that has the app installed (a Release build is most reliable, since
+# it launches straight into the app instead of the dev-client launcher).
+#
+#   maestro test apps/mobile/.maestro/qa-sweep.yaml
+#
+# Screenshots land in the directory you run it from, named NN-screen.png.
+# To capture light + dark, set the sim appearance and run twice:
+#   xcrun simctl ui booted appearance dark   && maestro test … (rename to *-dark)
+#   xcrun simctl ui booted appearance light  && maestro test … (rename to *-light)
+#
+# NOTE: the More-menu screens have no on-screen entry point in the app, so they
+# are reached by deep link here. If a "Open in Content Operator?" system dialog
+# appears, the optional `tapOn: Open` step dismisses it.
+
+appId: com.optentia.contentoperator
+---
+- launchApp:
+    clearState: false
+- waitForAnimationToEnd
+- takeScreenshot: 01-home
+
+# ---- bottom tab bar (tap by visible label) ----
+- tapOn: "Brainstorm"
+- waitForAnimationToEnd
+- takeScreenshot: 02-brainstorm
+
+- tapOn: "Queue"
+- waitForAnimationToEnd
+- takeScreenshot: 03-queue
+
+- tapOn: "Campaigns"
+- waitForAnimationToEnd
+- takeScreenshot: 04-campaigns
+
+- tapOn: "Calendar"
+- waitForAnimationToEnd
+- takeScreenshot: 05-calendar
+
+- tapOn: "Home"
+- waitForAnimationToEnd
+
+# ---- More-menu screens (deep link; groups are stripped from the URL) ----
+- openLink: contentoperator:///menu
+- tapOn:
+    text: "Open"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: 06-more-menu
+
+- openLink: contentoperator:///clients
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 07-clients
+
+- openLink: contentoperator:///brand
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 08-brand
+
+- openLink: contentoperator:///generate
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 09-generate
+
+- openLink: contentoperator:///analytics
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 10-analytics
+
+- openLink: contentoperator:///library
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 11-library
+
+- openLink: contentoperator:///platforms
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 12-platforms
+
+- openLink: contentoperator:///schedules
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 13-schedules
+
+- openLink: contentoperator:///heygen
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 14-heygen
+
+- openLink: contentoperator:///settings
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- takeScreenshot: 15-settings
