@@ -2,22 +2,30 @@ import { useAuth } from "@clerk/clerk-expo";
 import { BlurView } from "expo-blur";
 import { Redirect, Tabs } from "expo-router";
 import { BarChart3, CalendarDays, CheckSquare, LayoutDashboard, Lightbulb, Megaphone } from "lucide-react-native";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DEV_BYPASS } from "@/lib/env";
 import { useTheme } from "@/theme/ThemeProvider";
 
-/** Bottom tab bar mirroring the web BottomNav: Home / Brainstorm / Queue / Campaigns / Calendar. */
+/**
+ * Floating frosted dock (mirrors the web's floating nav): a detached, rounded
+ * pill — margins on every side, a real BlurView frost, a border and a drop
+ * shadow — so it floats over the aurora instead of sitting flush and invisible.
+ */
 export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   if (!DEV_BYPASS) {
     if (!isLoaded) return null;
     if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
   }
 
-  const active = theme === "dark" ? "#7ee4f0" : "#1f8ea3";
-  const inactive = theme === "dark" ? "#a2b4c8" : "#6b7b90";
+  const dark = theme === "dark";
+  const active = dark ? "#7ee4f0" : "#1f8ea3";
+  const inactive = dark ? "#a2b4c8" : "#6b7b90";
+  const border = dark ? "rgba(255,255,255,0.16)" : "rgba(120,140,175,0.32)";
 
   return (
     <Tabs
@@ -25,19 +33,35 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: active,
         tabBarInactiveTintColor: inactive,
+        tabBarLabelStyle: { fontSize: 10, fontFamily: "DMMono_400Regular", marginTop: 2 },
+        tabBarItemStyle: { paddingTop: 10 },
+        // The bar itself is transparent + shadowed; the rounded frosted fill is
+        // a separate clipped layer below, so the shadow isn't clipped away.
         tabBarStyle: {
           position: "absolute",
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(120,140,175,0.22)",
+          left: 18,
+          right: 18,
+          bottom: Math.max(insets.bottom, 14),
+          height: 64,
+          borderTopWidth: 0,
           backgroundColor: "transparent",
           elevation: 0,
+          shadowColor: dark ? "#000000" : "#1b2a44",
+          shadowOpacity: dark ? 0.5 : 0.18,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 12 },
         },
         tabBarBackground: () => (
-          <BlurView
-            intensity={40}
-            tint={theme === "dark" ? "dark" : "light"}
-            style={StyleSheet.absoluteFill}
-          />
+          <View
+            style={[StyleSheet.absoluteFill, { borderRadius: 30, overflow: "hidden", borderWidth: 1, borderColor: border }]}
+          >
+            <BlurView
+              intensity={dark ? 30 : 48}
+              tint={dark ? "dark" : "light"}
+              style={StyleSheet.absoluteFill}
+            />
+            <View className="bg-surface-2" style={StyleSheet.absoluteFill} />
+          </View>
         ),
       }}
     >
