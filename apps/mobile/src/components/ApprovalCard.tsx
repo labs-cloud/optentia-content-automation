@@ -1,6 +1,7 @@
 import { PLATFORM_META, STATUS_META, formatRelativeTime, type Platform, type PostStatus } from "@optentia/core";
 import { Check, X } from "lucide-react-native";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Glass } from "@/components/ui";
 import { useColors } from "@/theme/colors";
 
 export type ApprovalPost = {
@@ -34,7 +35,7 @@ export function ApprovalCard({
   const c = useColors();
 
   return (
-    <View className="rounded-[22px] border border-border bg-surface p-4">
+    <Glass className="p-4">
       <View className="flex-row flex-wrap items-center gap-2">
         {plat ? (
           <View className="rounded-md px-2 py-0.5" style={{ borderWidth: 1, borderColor: plat.hex + "66" }}>
@@ -92,6 +93,6 @@ export function ApprovalCard({
           </Pressable>
         </View>
       ) : null}
-    </View>
+    </Glass>
   );
 }

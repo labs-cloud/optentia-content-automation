@@ -1,5 +1,6 @@
 import { ClientSwitcher } from "@/components/ClientSwitcher";
 import { StatCard } from "@/components/StatCard";
+import { Glass } from "@/components/ui";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClient";
 import { useColors } from "@/theme/colors";
 import { trpc } from "@/lib/trpc";
@@ -60,11 +61,11 @@ export default function Dashboard() {
         </View>
 
         {!enabled ? (
-          <View className="mt-8 rounded-[22px] border border-border bg-surface p-6">
+          <Glass className="mt-8 p-6">
             <Text className="text-center text-sm text-muted-foreground">
               No client selected — add one on the web to get started.
             </Text>
-          </View>
+          </Glass>
         ) : (
           <>
             <View className="mt-6 gap-3">
@@ -79,7 +80,7 @@ export default function Dashboard() {
             </View>
 
             <Text className="mt-7 text-lg font-semibold text-foreground">Needs your approval</Text>
-            <View className="mt-3 rounded-[22px] border border-border bg-surface p-4">
+            <Glass className="mt-3 p-4">
               {pending.isLoading ? (
                 <ActivityIndicator color={c.accent} />
               ) : (pending.data?.length ?? 0) === 0 ? (
@@ -108,7 +109,7 @@ export default function Dashboard() {
                   ))}
                 </View>
               )}
-            </View>
+            </Glass>
           </>
         )}
       </ScrollView>

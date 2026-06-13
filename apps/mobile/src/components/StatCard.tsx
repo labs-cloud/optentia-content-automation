@@ -1,4 +1,5 @@
-import { Text, View } from "react-native";
+import { Text } from "react-native";
+import { Glass } from "@/components/ui";
 
 /** KPI card — DM Mono label, large value, optional hint. */
 export function StatCard({
@@ -13,7 +14,7 @@ export function StatCard({
   accent?: string;
 }) {
   return (
-    <View className="flex-1 rounded-[22px] border border-border bg-surface p-4">
+    <Glass className="p-4" style={{ flex: 1 }}>
       <Text className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
         {label}
       </Text>
@@ -24,6 +25,6 @@ export function StatCard({
         {value}
       </Text>
       {hint ? <Text className="mt-1 text-xs text-muted-foreground">{hint}</Text> : null}
-    </View>
+    </Glass>
   );
 }

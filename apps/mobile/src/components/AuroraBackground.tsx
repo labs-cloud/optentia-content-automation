@@ -19,11 +19,11 @@ export function AuroraBackground() {
           { c: "rgba(230,206,132,0.14)", bottom: "-5%", left: "-15%" },
         ]
       : [
-          // Kept soft so light mode reads as clean light, not a pastel wash.
-          { c: "rgba(143,224,232,0.20)", top: "-10%", left: "-15%" },
-          { c: "rgba(143,182,255,0.18)", top: "0%", right: "-20%" },
-          { c: "rgba(199,176,255,0.16)", bottom: "-10%", right: "-10%" },
-          { c: "rgba(255,215,176,0.14)", bottom: "-5%", left: "-15%" },
+          // Visible enough to tint the frosted glass, soft enough to stay "light".
+          { c: "rgba(120,210,224,0.38)", top: "-10%", left: "-15%" },
+          { c: "rgba(132,170,255,0.34)", top: "0%", right: "-20%" },
+          { c: "rgba(190,164,250,0.30)", bottom: "-10%", right: "-10%" },
+          { c: "rgba(255,206,150,0.26)", bottom: "-5%", left: "-15%" },
         ];
 
   return (
@@ -34,9 +34,9 @@ export function AuroraBackground() {
           colors={[b.c, "transparent"]}
           style={{
             position: "absolute",
-            width: 360,
-            height: 360,
-            borderRadius: 360,
+            width: 520,
+            height: 520,
+            borderRadius: 520,
             top: b.top as never,
             bottom: b.bottom as never,
             left: b.left as never,
