@@ -14,7 +14,6 @@ const config: ExpoConfig = {
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
-  newArchEnabled: false,
   splash: {
     image: "./assets/splash.png",
     resizeMode: "contain",
@@ -31,7 +30,6 @@ const config: ExpoConfig = {
     "expo-router",
     "expo-secure-store",
     "expo-font",
-    "./plugins/withFmtFix",
     [
       "expo-splash-screen",
       {
