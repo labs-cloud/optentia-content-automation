@@ -1,6 +1,6 @@
-import { Screen } from "@/components/ui";
+import { Glass, Screen } from "@/components/ui";
 import { useColors } from "@/theme/colors";
-import { useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import {
   BarChart3,
   Brain,
@@ -12,6 +12,7 @@ import {
   Sparkles,
   Timer,
   Wifi,
+  X,
   type LucideIcon,
 } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
@@ -33,7 +34,16 @@ export default function Menu() {
   const c = useColors();
   return (
     <Screen>
-      <View className="overflow-hidden rounded-[22px] border border-border bg-surface">
+      <Stack.Screen
+        options={{
+          headerLeft: () => (
+            <Pressable onPress={() => router.back()} hitSlop={12} className="pr-2">
+              <X color={c.muted} size={22} />
+            </Pressable>
+          ),
+        }}
+      />
+      <Glass>
         {ITEMS.map((item, i) => (
           <Pressable
             key={item.path}
@@ -46,7 +56,7 @@ export default function Menu() {
             <ChevronRight color={c.muted} size={18} />
           </Pressable>
         ))}
-      </View>
+      </Glass>
     </Screen>
   );
 }

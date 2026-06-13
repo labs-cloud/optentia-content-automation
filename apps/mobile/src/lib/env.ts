@@ -21,13 +21,3 @@ export const CLERK_PUBLISHABLE_KEY: string =
   process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ??
   extra.clerkPublishableKey ??
   (DEV_BYPASS ? DUMMY_CLERK_KEY : "");
-
-// TEMP DEBUG — remove once data loads. Prints to the Metro terminal at boot.
-console.log(
-  "[env] API_BASE_URL=",
-  JSON.stringify(API_BASE_URL),
-  "DEV_BYPASS=",
-  DEV_BYPASS,
-  "raw EXPO_PUBLIC_DEV_BYPASS=",
-  JSON.stringify(process.env.EXPO_PUBLIC_DEV_BYPASS),
-);
