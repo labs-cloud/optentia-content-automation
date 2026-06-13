@@ -1,12 +1,14 @@
 import { StatCard } from "@/components/StatCard";
 import { Card, EmptyHint, Loading, Screen } from "@/components/ui";
 import { useClientScope } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { trpc } from "@/lib/trpc";
 import { PLATFORM_META, type Platform } from "@optentia/core";
 import { Text, View } from "react-native";
 
 export default function Analytics() {
   const { clientId, enabled } = useClientScope();
+  const c = useColors();
   const summary = trpc.analytics.summary.useQuery({ clientId }, { enabled });
   const byPlatform = trpc.analytics.byPlatform.useQuery({ clientId }, { enabled });
 
@@ -18,7 +20,7 @@ export default function Analytics() {
   return (
     <Screen>
       <View className="flex-row gap-3">
-        <StatCard label="Published" value={summary.data?.published ?? 0} accent="#5fd0de" />
+        <StatCard label="Published" value={summary.data?.published ?? 0} accent={c.accent} />
         <StatCard label="Scheduled" value={summary.data?.scheduled ?? 0} accent="#6AA0F5" />
       </View>
       <View className="flex-row gap-3">
@@ -45,7 +47,7 @@ export default function Analytics() {
                       style={{
                         width: `${((r.published ?? 0) / max) * 100}%`,
                         height: "100%",
-                        backgroundColor: meta?.hex ?? "#5fd0de",
+                        backgroundColor: meta?.hex ?? c.accent,
                         borderRadius: 999,
                       }}
                     />

@@ -17,7 +17,10 @@ export function StatCard({
       <Text className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
         {label}
       </Text>
-      <Text className="mt-2 text-3xl font-bold" style={accent ? { color: accent } : undefined}>
+      <Text
+        className="mt-2 text-3xl font-bold text-foreground"
+        style={accent ? { color: accent } : undefined}
+      >
         {value}
       </Text>
       {hint ? <Text className="mt-1 text-xs text-muted-foreground">{hint}</Text> : null}

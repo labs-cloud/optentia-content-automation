@@ -1,4 +1,5 @@
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { trpc } from "@/lib/trpc";
 import { PLATFORM_META, formatScheduledTime, type Platform } from "@optentia/core";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
@@ -7,6 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function Calendar() {
   const { activeClient } = useActiveClient();
   const { clientId, enabled } = useClientScope();
+  const c = useColors();
   const posts = trpc.posts.list.useQuery({ clientId, status: "scheduled", limit: 100 }, { enabled });
 
   const sorted = [...(posts.data ?? [])].sort(
@@ -24,7 +26,7 @@ export default function Calendar() {
       </View>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 110, gap: 12 }}>
         {posts.isLoading ? (
-          <ActivityIndicator color="#5fd0de" />
+          <ActivityIndicator color={c.accent} />
         ) : sorted.length === 0 ? (
           <View className="rounded-[22px] border border-border bg-surface p-6">
             <Text className="text-center text-sm text-muted-foreground">Nothing scheduled.</Text>

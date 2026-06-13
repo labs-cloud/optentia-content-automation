@@ -1,5 +1,6 @@
 import { Card, EmptyHint, Loading, Screen } from "@/components/ui";
 import { useClientScope } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { trpc } from "@/lib/trpc";
 import { formatRelativeTime } from "@optentia/core";
 import { Text, View } from "react-native";
@@ -13,6 +14,7 @@ const STATUS_HEX: Record<string, string> = {
 
 export default function HeyGen() {
   const { clientId, enabled } = useClientScope();
+  const c = useColors();
   const reqs = trpc.heygen.list.useQuery({ clientId }, { enabled });
 
   if (reqs.isLoading) return <Screen><Loading /></Screen>;
@@ -21,7 +23,7 @@ export default function HeyGen() {
   return (
     <Screen>
       {reqs.data.map((r) => {
-        const hex = STATUS_HEX[r.status] ?? "#8a9bb0";
+        const hex = STATUS_HEX[r.status] ?? c.muted;
         return (
           <Card key={r.id}>
             <View className="flex-row items-center justify-between gap-2">

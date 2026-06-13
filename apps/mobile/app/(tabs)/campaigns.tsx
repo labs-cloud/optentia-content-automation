@@ -1,4 +1,5 @@
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { trpc } from "@/lib/trpc";
 import { CAMPAIGN_GOAL_LABELS, type CampaignGoal } from "@shared/platforms";
 import { useRouter } from "expo-router";
@@ -9,6 +10,7 @@ export default function Campaigns() {
   const { activeClient } = useActiveClient();
   const { clientId, enabled } = useClientScope();
   const router = useRouter();
+  const colors = useColors();
   const campaigns = trpc.campaigns.getCampaigns.useQuery({ clientId }, { enabled });
 
   return (
@@ -21,7 +23,7 @@ export default function Campaigns() {
       </View>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 110, gap: 12 }}>
         {campaigns.isLoading ? (
-          <ActivityIndicator color="#5fd0de" />
+          <ActivityIndicator color={colors.accent} />
         ) : (campaigns.data?.length ?? 0) === 0 ? (
           <View className="rounded-[22px] border border-border bg-surface p-6">
             <Text className="text-center text-sm text-muted-foreground">

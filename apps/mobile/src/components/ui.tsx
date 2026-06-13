@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { useColors } from "@/theme/colors";
 
 /** Padded scroll container for secondary screens (header supplied by the stack). */
 export function Screen({ children }: { children: ReactNode }) {
@@ -15,9 +16,10 @@ export function Card({ children }: { children: ReactNode }) {
 }
 
 export function Loading() {
+  const c = useColors();
   return (
     <View className="py-10">
-      <ActivityIndicator color="#5fd0de" />
+      <ActivityIndicator color={c.accent} />
     </View>
   );
 }

@@ -1,5 +1,6 @@
 import { Screen, EmptyHint } from "@/components/ui";
 import { useActiveClient } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { useRouter } from "expo-router";
 import { Check } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
@@ -7,6 +8,7 @@ import { Pressable, Text, View } from "react-native";
 export default function Clients() {
   const { clients, activeClient, setActiveClientId } = useActiveClient();
   const router = useRouter();
+  const colors = useColors();
 
   if (clients.length === 0) return <Screen><EmptyHint>No clients yet — add one on the web.</EmptyHint></Screen>;
 
@@ -22,7 +24,7 @@ export default function Clients() {
               router.back();
             }}
             className="rounded-[22px] border border-border bg-surface p-4"
-            style={active ? { borderColor: "#5fd0de" } : undefined}
+            style={active ? { borderColor: colors.accent } : undefined}
           >
             <View className="flex-row items-center gap-3">
               <View className="h-10 w-10 items-center justify-center rounded-xl bg-primary/15">
@@ -32,7 +34,7 @@ export default function Clients() {
                 <Text className="text-base font-semibold text-foreground">{c.name}</Text>
                 {c.industry ? <Text className="text-xs text-muted-foreground">{c.industry}</Text> : null}
               </View>
-              {active ? <Check color="#5fd0de" size={18} /> : null}
+              {active ? <Check color={colors.accent} size={18} /> : null}
             </View>
             {c.description ? (
               <Text className="mt-2 text-sm text-muted-foreground" numberOfLines={2}>

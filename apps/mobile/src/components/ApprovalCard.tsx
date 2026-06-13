@@ -1,6 +1,7 @@
 import { PLATFORM_META, STATUS_META, formatRelativeTime, type Platform, type PostStatus } from "@optentia/core";
 import { Check, X } from "lucide-react-native";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useColors } from "@/theme/colors";
 
 export type ApprovalPost = {
   id: number;
@@ -30,6 +31,7 @@ export function ApprovalCard({
   const plat = PLATFORM_META[post.platform as Platform];
   const status = STATUS_META[post.status as PostStatus];
   const pending = post.status === "pending_approval";
+  const c = useColors();
 
   return (
     <View className="rounded-[22px] border border-border bg-surface p-4">
@@ -82,10 +84,11 @@ export function ApprovalCard({
           <Pressable
             disabled={busy}
             onPress={() => onReject(post)}
-            className="flex-row items-center justify-center gap-1.5 rounded-xl border border-[#FF5B5B] px-4 py-2.5 active:opacity-80"
+            style={{ borderColor: c.danger }}
+            className="flex-row items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 active:opacity-80"
           >
-            <X color="#FF5B5B" size={16} />
-            <Text className="font-medium text-[#FF5B5B]">Reject</Text>
+            <X color={c.danger} size={16} />
+            <Text className="font-medium" style={{ color: c.danger }}>Reject</Text>
           </Pressable>
         </View>
       ) : null}

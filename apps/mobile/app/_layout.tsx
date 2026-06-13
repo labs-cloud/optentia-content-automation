@@ -27,7 +27,7 @@ import { ActiveClientProvider } from "@/contexts/ActiveClient";
 import { API_BASE_URL, CLERK_PUBLISHABLE_KEY } from "@/lib/env";
 import { tokenCache } from "@/lib/tokenCache";
 import { trpc } from "@/lib/trpc";
-import { ThemeProvider } from "@/theme/ThemeProvider";
+import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -48,6 +48,24 @@ function ApiProviders({ children }: { children: ReactNode }) {
     <trpc.Provider client={client} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </trpc.Provider>
+  );
+}
+
+/** Aurora + status bar + navigator; reads the theme so the status bar contrasts. */
+function ThemedShell() {
+  const { theme } = useTheme();
+  return (
+    <View style={{ flex: 1 }}>
+      <StatusBar style={theme === "dark" ? "light" : "dark"} />
+      <AuroraBackground />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: "transparent" },
+          animation: "slide_from_right",
+        }}
+      />
+    </View>
   );
 }
 
@@ -75,17 +93,7 @@ export default function RootLayout() {
           <ThemeProvider>
             <ApiProviders>
               <ActiveClientProvider>
-                <StatusBar style="light" />
-                <View style={{ flex: 1 }}>
-                  <AuroraBackground />
-                  <Stack
-                    screenOptions={{
-                      headerShown: false,
-                      contentStyle: { backgroundColor: "transparent" },
-                      animation: "slide_from_right",
-                    }}
-                  />
-                </View>
+                <ThemedShell />
               </ActiveClientProvider>
             </ApiProviders>
           </ThemeProvider>

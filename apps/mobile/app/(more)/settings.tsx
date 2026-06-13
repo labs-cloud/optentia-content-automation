@@ -1,4 +1,5 @@
 import { Card, Field, Screen } from "@/components/ui";
+import { useColors } from "@/theme/colors";
 import { useTheme } from "@/theme/ThemeProvider";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
@@ -10,6 +11,7 @@ export default function Settings() {
   const { user } = useUser();
   const { signOut } = useAuth();
   const router = useRouter();
+  const c = useColors();
 
   const onSignOut = async () => {
     await signOut();
@@ -21,7 +23,7 @@ export default function Settings() {
       <Card>
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            {theme === "dark" ? <Moon size={18} color="#8a9bb0" /> : <Sun size={18} color="#8a9bb0" />}
+            {theme === "dark" ? <Moon size={18} color={c.muted} /> : <Sun size={18} color={c.muted} />}
             <Text className="text-sm font-medium text-foreground">
               Frosted Vapor · {theme === "dark" ? "Dark" : "Light"}
             </Text>
@@ -43,10 +45,11 @@ export default function Settings() {
 
       <Pressable
         onPress={onSignOut}
-        className="flex-row items-center justify-center gap-2 rounded-xl border border-[#FF5B5B] py-3 active:opacity-80"
+        style={{ borderColor: c.danger }}
+        className="flex-row items-center justify-center gap-2 rounded-xl border py-3 active:opacity-80"
       >
-        <LogOut size={16} color="#FF5B5B" />
-        <Text className="font-medium text-[#FF5B5B]">Sign out</Text>
+        <LogOut size={16} color={c.danger} />
+        <Text className="font-medium" style={{ color: c.danger }}>Sign out</Text>
       </Pressable>
     </Screen>
   );

@@ -1,6 +1,7 @@
 import { IdeaCard, type IdeaCardData } from "@/components/IdeaCard";
 import { SwipeDeck, type SwipeDirection } from "@/components/SwipeDeck";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { trpc } from "@/lib/trpc";
 import { Sparkles } from "lucide-react-native";
 import { useMemo, useState } from "react";
@@ -12,6 +13,7 @@ export default function Brainstorm() {
   const { clientId, enabled } = useClientScope();
   const utils = trpc.useUtils();
   const [deckVersion, setDeckVersion] = useState(0);
+  const c = useColors();
 
   const proposed = trpc.brainstorm.getBrainstormIdeas.useQuery(
     { clientId, status: "proposed" },
@@ -63,7 +65,7 @@ export default function Brainstorm() {
             onPress={() => generate.mutate({ clientId, count: 10 })}
             className="flex-row items-center gap-1.5 rounded-xl bg-primary px-3 py-2 active:opacity-80"
           >
-            <Sparkles color="#06121f" size={16} />
+            <Sparkles color={c.onAccent} size={16} />
             <Text className="font-semibold text-primary-foreground">Generate</Text>
           </Pressable>
         </View>
@@ -71,11 +73,11 @@ export default function Brainstorm() {
         <View className="flex-1 justify-center pb-6">
           {generate.isPending ? (
             <View className="items-center gap-3">
-              <ActivityIndicator color="#5fd0de" />
+              <ActivityIndicator color={c.accent} />
               <Text className="text-sm text-muted-foreground">Dealing your deck…</Text>
             </View>
           ) : proposed.isLoading ? (
-            <ActivityIndicator color="#5fd0de" />
+            <ActivityIndicator color={c.accent} />
           ) : (
             <SwipeDeck
               key={`${clientId}-${deckVersion}-${deckItems[0]?.id ?? "empty"}`}

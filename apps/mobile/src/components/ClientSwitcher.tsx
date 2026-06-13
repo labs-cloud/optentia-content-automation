@@ -1,4 +1,5 @@
 import { useActiveClient } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { Check, ChevronsUpDown } from "lucide-react-native";
 import { useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
@@ -7,6 +8,7 @@ import { Modal, Pressable, Text, View } from "react-native";
 export function ClientSwitcher() {
   const { clients, activeClient, setActiveClientId } = useActiveClient();
   const [open, setOpen] = useState(false);
+  const colors = useColors();
 
   return (
     <>
@@ -22,7 +24,7 @@ export function ClientSwitcher() {
         <Text className="max-w-[120px] text-sm font-medium text-foreground" numberOfLines={1}>
           {activeClient?.name ?? "Select client"}
         </Text>
-        <ChevronsUpDown size={14} color="#8a9bb0" />
+        <ChevronsUpDown size={14} color={colors.muted} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -46,7 +48,7 @@ export function ClientSwitcher() {
                   </Text>
                 </View>
                 <Text className="flex-1 text-foreground">{c.name}</Text>
-                {activeClient?.id === c.id ? <Check size={18} color="#5fd0de" /> : null}
+                {activeClient?.id === c.id ? <Check size={18} color={colors.accent} /> : null}
               </Pressable>
             ))}
             {clients.length === 0 ? (
