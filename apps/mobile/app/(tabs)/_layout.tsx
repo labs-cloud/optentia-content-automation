@@ -25,7 +25,7 @@ export default function TabsLayout() {
   const dark = theme === "dark";
   const active = dark ? "#7ee4f0" : "#1f8ea3";
   const inactive = dark ? "#a2b4c8" : "#6b7b90";
-  const border = dark ? "rgba(255,255,255,0.16)" : "rgba(120,140,175,0.32)";
+  const border = dark ? "rgba(126,228,240,0.28)" : "rgba(120,140,175,0.38)";
 
   return (
     <Tabs
@@ -39,21 +39,21 @@ export default function TabsLayout() {
         // a separate clipped layer below, so the shadow isn't clipped away.
         tabBarStyle: {
           position: "absolute",
-          left: 18,
-          right: 18,
-          bottom: Math.max(insets.bottom, 14),
-          height: 64,
+          left: 22,
+          right: 22,
+          bottom: Math.max(insets.bottom, 18),
+          height: 66,
           borderTopWidth: 0,
           backgroundColor: "transparent",
           elevation: 0,
           shadowColor: dark ? "#000000" : "#1b2a44",
-          shadowOpacity: dark ? 0.5 : 0.18,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 12 },
+          shadowOpacity: dark ? 0.55 : 0.22,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 14 },
         },
         tabBarBackground: () => (
           <View
-            style={[StyleSheet.absoluteFill, { borderRadius: 30, overflow: "hidden", borderWidth: 1, borderColor: border }]}
+            style={[StyleSheet.absoluteFill, { borderRadius: 33, overflow: "hidden", borderWidth: 1, borderColor: border }]}
           >
             <BlurView
               intensity={dark ? 30 : 48}

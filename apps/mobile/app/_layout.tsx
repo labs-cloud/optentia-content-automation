@@ -28,6 +28,7 @@ import { API_BASE_URL, CLERK_PUBLISHABLE_KEY } from "@/lib/env";
 import { tokenCache } from "@/lib/tokenCache";
 import { trpc } from "@/lib/trpc";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
+import { themeVars } from "@/theme/vars";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,7 +56,7 @@ function ApiProviders({ children }: { children: ReactNode }) {
 function ThemedShell() {
   const { theme } = useTheme();
   return (
-    <View style={{ flex: 1 }}>
+    <View style={[{ flex: 1 }, themeVars(theme)]}>
       <StatusBar style={theme === "dark" ? "light" : "dark"} />
       <AuroraBackground />
       <Stack

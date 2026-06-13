@@ -13,10 +13,11 @@ export function AuroraBackground() {
   const blobs =
     theme === "dark"
       ? [
-          { c: "rgba(95,224,208,0.22)", top: "-10%", left: "-15%" },
-          { c: "rgba(90,168,255,0.20)", top: "0%", right: "-20%" },
-          { c: "rgba(183,156,245,0.20)", bottom: "-10%", right: "-10%" },
-          { c: "rgba(230,206,132,0.14)", bottom: "-5%", left: "-15%" },
+          // Vibrant teal/blue/violet/gold drift — the signature Frosted Vapor glow.
+          { c: "rgba(95,224,224,0.42)", top: "-10%", left: "-15%" },
+          { c: "rgba(90,168,255,0.38)", top: "0%", right: "-20%" },
+          { c: "rgba(183,156,245,0.34)", bottom: "-10%", right: "-10%" },
+          { c: "rgba(230,206,132,0.24)", bottom: "-5%", left: "-15%" },
         ]
       : [
           // Visible enough to tint the frosted glass, soft enough to stay "light".
