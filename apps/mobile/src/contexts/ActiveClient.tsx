@@ -31,10 +31,23 @@ const ActiveClientContext = createContext<ActiveClientValue | null>(null);
 export function ActiveClientProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const { isSignedIn } = useAuth();
-  const { data, isLoading } = trpc.clients.list.useQuery(undefined, {
+  const { data, isLoading, error } = trpc.clients.list.useQuery(undefined, {
     staleTime: 60_000,
     enabled: isSignedIn === true || DEV_BYPASS,
   });
+  // TEMP DEBUG — remove once data loads.
+  useEffect(() => {
+    console.log(
+      "[clients.list] enabled=",
+      isSignedIn === true || DEV_BYPASS,
+      "isLoading=",
+      isLoading,
+      "count=",
+      (data as unknown[] | undefined)?.length,
+      "error=",
+      error ? error.message : null,
+    );
+  }, [data, isLoading, error, isSignedIn]);
   const clients = useMemo(() => (data ?? []) as ClientSummary[], [data]);
 
   const [storedId, setStoredId] = useState<number | null>(null);
