@@ -1,5 +1,6 @@
 import { Card, Screen } from "@/components/ui";
 import { useClientScope } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { trpc } from "@/lib/trpc";
 import { CONTENT_PILLARS, PLATFORM_META, type Platform } from "@optentia/core";
 import { useRouter } from "expo-router";
@@ -12,6 +13,7 @@ const PLATFORMS: Platform[] = ["instagram", "linkedin_personal", "facebook", "yo
 export default function Generate() {
   const { clientId, enabled } = useClientScope();
   const router = useRouter();
+  const c = useColors();
   const [platform, setPlatform] = useState<Platform>("instagram");
   const [pillar, setPillar] = useState(CONTENT_PILLARS[0].value);
   const [topic, setTopic] = useState("");
@@ -32,7 +34,7 @@ export default function Generate() {
                 key={p}
                 onPress={() => setPlatform(p)}
                 className="rounded-full border px-3 py-1.5"
-                style={{ borderColor: active ? "#5fd0de" : "rgba(255,255,255,0.14)", backgroundColor: active ? "rgba(95,208,222,0.16)" : "transparent" }}
+                style={{ borderColor: active ? c.accent : c.border, backgroundColor: active ? c.accentTint : "transparent" }}
               >
                 <Text className={active ? "text-sm text-foreground" : "text-sm text-muted-foreground"}>
                   {PLATFORM_META[p].icon} {PLATFORM_META[p].label}
@@ -53,7 +55,7 @@ export default function Generate() {
                 key={p.value}
                 onPress={() => setPillar(p.value)}
                 className="rounded-xl border p-3"
-                style={{ borderColor: active ? "#5fd0de" : "rgba(255,255,255,0.14)", backgroundColor: active ? "rgba(95,208,222,0.12)" : "transparent" }}
+                style={{ borderColor: active ? c.accent : c.border, backgroundColor: active ? c.accentTint : "transparent" }}
               >
                 <Text className="text-sm font-medium text-foreground">{p.label}</Text>
                 <Text className="text-xs text-muted-foreground">{p.description}</Text>
@@ -69,7 +71,7 @@ export default function Generate() {
           value={topic}
           onChangeText={setTopic}
           placeholder="What should this post be about?"
-          placeholderTextColor="#8a9bb0"
+          placeholderTextColor={c.muted}
           multiline
           className="min-h-[64px] rounded-xl border border-border px-3 py-2 text-foreground"
         />
@@ -81,7 +83,7 @@ export default function Generate() {
         className="mt-1 flex-row items-center justify-center gap-2 rounded-xl bg-primary py-3.5 active:opacity-80"
         style={{ opacity: generate.isPending ? 0.7 : 1 }}
       >
-        {generate.isPending ? <ActivityIndicator color="#06121f" /> : <Sparkles color="#06121f" size={18} />}
+        {generate.isPending ? <ActivityIndicator color={c.onAccent} /> : <Sparkles color={c.onAccent} size={18} />}
         <Text className="font-semibold text-primary-foreground">
           {generate.isPending ? "Generating…" : "Generate post"}
         </Text>

@@ -1,5 +1,6 @@
 import { ApprovalCard, type ApprovalPost } from "@/components/ApprovalCard";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClient";
+import { useColors } from "@/theme/colors";
 import { trpc } from "@/lib/trpc";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
@@ -17,6 +18,7 @@ export default function Queue() {
   const { clientId, enabled } = useClientScope();
   const utils = trpc.useUtils();
   const [tab, setTab] = useState("pending_approval");
+  const c = useColors();
 
   const posts = trpc.posts.list.useQuery({ clientId, status: tab, limit: 50 }, { enabled });
 
@@ -32,7 +34,7 @@ export default function Queue() {
     <SafeAreaView className="flex-1" edges={["top"]}>
       <View className="px-5 pt-3">
         <Text className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Operate · {activeClient?.name ?? ""}
+          Operate{activeClient ? ` · ${activeClient.name}` : ""}
         </Text>
         <Text className="mt-1 text-3xl font-bold text-foreground">Approval queue</Text>
 
@@ -45,8 +47,8 @@ export default function Queue() {
                 onPress={() => setTab(t.value)}
                 className="mx-1 rounded-full border px-3.5 py-1.5"
                 style={{
-                  borderColor: active ? "#5fd0de" : "rgba(255,255,255,0.14)",
-                  backgroundColor: active ? "rgba(95,208,222,0.16)" : "transparent",
+                  borderColor: active ? c.accent : c.border,
+                  backgroundColor: active ? c.accentTint : "transparent",
                 }}
               >
                 <Text className={active ? "text-sm text-foreground" : "text-sm text-muted-foreground"}>
@@ -60,7 +62,7 @@ export default function Queue() {
 
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 110, gap: 12 }}>
         {posts.isLoading ? (
-          <ActivityIndicator color="#5fd0de" />
+          <ActivityIndicator color={c.accent} />
         ) : (posts.data?.length ?? 0) === 0 ? (
           <View className="rounded-[22px] border border-border bg-surface p-6">
             <Text className="text-center text-sm text-muted-foreground">

@@ -8,15 +8,17 @@
   --canvas: #e7edf6;
   --background: #e7edf6;
   --foreground: #233246;
-  --surface: rgba(255, 255, 255, 0.62);
-  --surface-2: rgba(255, 255, 255, 0.82);
+  /* Translucent glass — a BlurView sits behind these so panels frost over the
+     aurora and "float" rather than reading as flat white. */
+  --surface: rgba(255, 255, 255, 0.55);
+  --surface-2: rgba(255, 255, 255, 0.72);
   --surface-solid: #ffffff;
-  --card: rgba(255, 255, 255, 0.62);
+  --card: rgba(255, 255, 255, 0.55);
   --primary: #2a7a8a;
   --primary-foreground: #ffffff;
   --accent-bright: #1f8ea3;
   --accent-tint: rgba(42, 122, 138, 0.12);
-  --border: rgba(120, 140, 175, 0.26);
+  --border: rgba(120, 140, 175, 0.40);
   --muted: rgba(120, 140, 175, 0.1);
   --muted-foreground: #6b7b90;
   --text-strong: #0e1b2c;
@@ -28,10 +30,10 @@
   --canvas: #0a1322;
   --background: #0a1322;
   --foreground: #eaf2fb;
-  --surface: rgba(255, 255, 255, 0.06);
-  --surface-2: rgba(255, 255, 255, 0.1);
+  --surface: rgba(255, 255, 255, 0.07);
+  --surface-2: rgba(255, 255, 255, 0.12);
   --surface-solid: #1a2333;
-  --card: rgba(255, 255, 255, 0.06);
+  --card: rgba(255, 255, 255, 0.07);
   --primary: #5fd0de;
   --primary-foreground: #06121f;
   --accent-bright: #7ee4f0;

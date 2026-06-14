@@ -1,0 +1,15 @@
+# Forces the in-app theme to LIGHT (idempotent). Run before the light sweep.
+#   maestro test apps/mobile/.maestro/set-light.yaml
+appId: com.optentia.contentoperator
+---
+- launchApp
+- openLink: contentoperator:///settings
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Frosted Vapor · Dark"
+    commands:
+      - tapOn:
+          id: "theme-toggle"
+      - waitForAnimationToEnd
