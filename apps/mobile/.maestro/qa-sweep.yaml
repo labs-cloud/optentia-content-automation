@@ -22,27 +22,30 @@ appId: com.optentia.contentoperator
 - waitForAnimationToEnd
 - takeScreenshot: 01-home
 
-# ---- bottom tab bar (tap by visible label) ----
-- tapOn: "Brainstorm"
+# Tab-bar labels live inside the custom blurred dock and aren't matchable by
+# text, so every screen is reached by deep link (groups are stripped from the
+# URL). The optional `tapOn: Open` clears the first "Open in …?" system dialog.
+- openLink: contentoperator:///brainstorm
+- tapOn: { text: "Open", optional: true }
 - waitForAnimationToEnd
 - takeScreenshot: 02-brainstorm
 
-- tapOn: "Queue"
+- openLink: contentoperator:///queue
+- tapOn: { text: "Open", optional: true }
 - waitForAnimationToEnd
 - takeScreenshot: 03-queue
 
-- tapOn: "Campaigns"
+- openLink: contentoperator:///campaigns
+- tapOn: { text: "Open", optional: true }
 - waitForAnimationToEnd
 - takeScreenshot: 04-campaigns
 
-- tapOn: "Calendar"
+- openLink: contentoperator:///calendar
+- tapOn: { text: "Open", optional: true }
 - waitForAnimationToEnd
 - takeScreenshot: 05-calendar
 
-- tapOn: "Home"
-- waitForAnimationToEnd
-
-# ---- More-menu screens (deep link; groups are stripped from the URL) ----
+# ---- More-menu screens ----
 - openLink: contentoperator:///menu
 - tapOn:
     text: "Open"
