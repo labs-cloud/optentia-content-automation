@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { BlurView } from "expo-blur";
 import { Redirect, Tabs } from "expo-router";
-import { BarChart3, CalendarDays, CheckSquare, LayoutDashboard, Lightbulb, Megaphone } from "lucide-react-native";
+import { CalendarDays, CheckSquare, LayoutDashboard, LayoutGrid, Lightbulb, Megaphone } from "lucide-react-native";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DEV_BYPASS } from "@/lib/env";
@@ -88,6 +88,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="calendar"
         options={{ title: "Calendar", tabBarIcon: ({ color, size }) => <CalendarDays color={color} size={size} /> }}
+      />
+      <Tabs.Screen
+        name="more"
+        options={{ title: "More", tabBarIcon: ({ color, size }) => <LayoutGrid color={color} size={size} /> }}
       />
     </Tabs>
   );
