@@ -17,7 +17,7 @@ export default function Campaigns() {
     <SafeAreaView className="flex-1" edges={["top"]}>
       <View className="px-5 pt-3">
         <Text className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          Create · {activeClient?.name ?? ""}
+          Create{activeClient ? ` · ${activeClient.name}` : ""}
         </Text>
         <Text className="mt-1 text-3xl font-bold text-foreground">Campaigns</Text>
       </View>

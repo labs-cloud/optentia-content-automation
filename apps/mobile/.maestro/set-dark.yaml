@@ -1,0 +1,17 @@
+# Forces the in-app theme to DARK (idempotent). Run before the dark sweep.
+#   maestro test apps/mobile/.maestro/set-dark.yaml
+appId: com.optentia.contentoperator
+---
+- launchApp
+- openLink: contentoperator:///settings
+- tapOn: { text: "Open", optional: true }
+- waitForAnimationToEnd
+# The app theme is independent of the iOS system appearance, so flip it in-app.
+# Only tap when it's currently Light, so re-runs stay on dark.
+- runFlow:
+    when:
+      visible: "Frosted Vapor · Light"
+    commands:
+      - tapOn:
+          id: "theme-toggle"
+      - waitForAnimationToEnd

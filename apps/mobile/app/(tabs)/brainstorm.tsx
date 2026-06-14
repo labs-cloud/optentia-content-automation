@@ -55,7 +55,7 @@ export default function Brainstorm() {
         <View className="flex-row items-start justify-between">
           <View className="flex-1">
             <Text className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-              Create · {activeClient?.name ?? ""}
+              Create{activeClient ? ` · ${activeClient.name}` : ""}
             </Text>
             <Text className="mt-1 text-3xl font-bold text-foreground">Brainstorm</Text>
             <Text className="mt-1 text-xs text-muted-foreground">Every swipe teaches the AI.</Text>

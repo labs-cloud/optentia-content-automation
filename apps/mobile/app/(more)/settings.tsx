@@ -29,6 +29,8 @@ export default function Settings() {
             </Text>
           </View>
           <Switch
+            testID="theme-toggle"
+            accessibilityLabel="Toggle dark mode"
             value={theme === "dark"}
             onValueChange={toggleTheme}
             trackColor={{ true: "#2a7a8a", false: "#c3ccd9" }}

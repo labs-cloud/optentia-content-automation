@@ -19,6 +19,12 @@ appId: com.optentia.contentoperator
 ---
 - launchApp:
     clearState: false
+# Wait for the client list + dashboard data to load so we capture the populated
+# state, not the cold-launch loading flash. "Pending approval" is a dashboard KPI
+# label that only appears once a client is active.
+- extendedWaitUntil:
+    visible: "Pending approval"
+    timeout: 20000
 - waitForAnimationToEnd
 - takeScreenshot: 01-home
 

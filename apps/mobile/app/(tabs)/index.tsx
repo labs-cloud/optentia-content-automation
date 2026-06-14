@@ -12,7 +12,7 @@ import { useTheme } from "@/theme/ThemeProvider";
 import { trpc } from "@/lib/trpc";
 
 export default function Dashboard() {
-  const { activeClient } = useActiveClient();
+  const { activeClient, clients, isLoading: clientsLoading } = useActiveClient();
   const { clientId, enabled } = useClientScope();
   const { theme } = useTheme();
   const c = useColors();
@@ -70,11 +70,19 @@ export default function Dashboard() {
         </View>
 
         {!enabled ? (
-          <Glass className="mt-2 p-6">
-            <Text className="text-center text-sm text-muted-foreground">
-              No client selected — add one on the web to get started.
-            </Text>
-          </Glass>
+          clientsLoading ? (
+            <Glass className="mt-2 p-8">
+              <ActivityIndicator color={c.accent} />
+            </Glass>
+          ) : (
+            <Glass className="mt-2 p-6">
+              <Text className="text-center text-sm text-muted-foreground">
+                {clients.length === 0
+                  ? "No clients yet — add one on the web to get started."
+                  : "Select a client from the switcher above to get started."}
+              </Text>
+            </Glass>
+          )
         ) : (
           <>
             {/* Actions */}
