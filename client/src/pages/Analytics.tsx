@@ -74,7 +74,7 @@ export default function Analytics() {
     for (const row of overTime ?? []) {
       byDate.set(row.date, (byDate.get(row.date) ?? 0) + Number(row.count));
     }
-    return [...byDate.entries()].map(([date, count]) => ({ date, count }));
+    return Array.from(byDate.entries()).map(([date, count]) => ({ date, count }));
   }, [overTime]);
 
   const pieData = (byPlatform ?? []).filter((p) => p.total > 0).map((p, i) => ({

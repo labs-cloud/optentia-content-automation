@@ -17,7 +17,7 @@ export async function storagePut(
   contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
   const key = appendHashSuffix(normalizeKey(relKey));
-  const body = typeof data === "string" ? Buffer.from(data) : data;
+  const body = typeof data === "string" ? Buffer.from(data) : Buffer.isBuffer(data) ? data : Buffer.from(data);
 
   const blob = await put(key, body, {
     access: "public",
