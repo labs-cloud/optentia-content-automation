@@ -250,7 +250,9 @@ export const contentPosts = mysqlTable("content_posts", {
   platform: mysqlEnum("platform", PLATFORM_VALUES).notNull(),
   contentType: mysqlEnum("contentType", ["text", "image", "video", "reel", "story", "carousel"]).default("text").notNull(),
   contentPillar: mysqlEnum("contentPillar", ["strong_opinion", "practical_education", "documentary", "direct_promotion"]).default("strong_opinion"),
-  status: mysqlEnum("status", ["draft", "pending_approval", "approved", "scheduled", "published", "rejected", "failed"]).default("draft").notNull(),
+  // `needs_generation` + `generating` added for the Phase 1 render worker (append-only — MySQL enum
+  // values must never be reordered/removed). The render brief is stored as JSON in `generationPrompt`.
+  status: mysqlEnum("status", ["draft", "pending_approval", "approved", "scheduled", "published", "rejected", "failed", "needs_generation", "generating"]).default("draft").notNull(),
   scheduledAt: timestamp("scheduledAt"),
   publishedAt: timestamp("publishedAt"),
   mediaUrl: text("mediaUrl"),
