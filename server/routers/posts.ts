@@ -421,8 +421,8 @@ export const postsRouter = router({
         });
       }
 
-      const { getPlatformConnection } = await import("../db");
-      const { publishToInstagram, publishToFacebook } = await import("../publishers/meta");
+      const { getPlatformConnection, getImageAssetsForPost } = await import("../db");
+      const { publishToInstagram, publishCarouselToInstagram, publishToFacebook } = await import("../publishers/meta");
       const { publishToLinkedIn } = await import("../publishers/linkedin");
       const { publishYouTubeCommunityPost } = await import("../publishers/youtube");
 
@@ -439,14 +439,30 @@ export const postsRouter = router({
       let result: { success: boolean; externalPostId?: string; error?: string };
 
       switch (post.platform) {
-        case "instagram":
-          result = await publishToInstagram({
-            accessToken: conn.accessToken,
-            accountId: conn.accountId ?? "",
-            caption: `${caption}\n\n${hashtags}`.trim(),
-            imageUrl: post.imageUrl ?? undefined,
-          });
+        case "instagram": {
+          const igCaption = `${caption}\n\n${hashtags}`.trim();
+          // Carousel = the post's cover (imageUrl) + any linked image slides, in order.
+          const slides = await getImageAssetsForPost(post.id);
+          const carouselUrls = [post.imageUrl, ...slides.map((s) => s.url)].filter(
+            (u, i, arr): u is string => Boolean(u) && arr.indexOf(u) === i
+          );
+          if (post.contentType === "carousel" && carouselUrls.length >= 2) {
+            result = await publishCarouselToInstagram({
+              accessToken: conn.accessToken,
+              accountId: conn.accountId ?? "",
+              caption: igCaption,
+              imageUrls: carouselUrls,
+            });
+          } else {
+            result = await publishToInstagram({
+              accessToken: conn.accessToken,
+              accountId: conn.accountId ?? "",
+              caption: igCaption,
+              imageUrl: post.imageUrl ?? undefined,
+            });
+          }
           break;
+        }
         case "facebook":
           result = await publishToFacebook({
             accessToken: conn.accessToken,

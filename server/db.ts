@@ -324,6 +324,17 @@ export async function getMediaAssets(type?: string, clientId?: number) {
   return db.select().from(mediaAssets).orderBy(desc(mediaAssets.createdAt));
 }
 
+/** Image assets linked to a post, in upload order — the carousel slide set (cover excluded; it lives on the post's imageUrl). */
+export async function getImageAssetsForPost(postId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.linkedPostId, postId), eq(mediaAssets.type, "image")))
+    .orderBy(mediaAssets.id);
+}
+
 export async function createMediaAsset(data: InsertMediaAsset) {
   const db = await getDb();
   if (!db) throw new Error("DB unavailable");

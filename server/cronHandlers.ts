@@ -12,6 +12,7 @@ import {
   getScheduledPostsDue,
   getPlatformConnection,
   getPlatformConnections,
+  getImageAssetsForPost,
   recordAnalyticsEvent,
   updateContentPost,
   updateContentSchedule,
@@ -25,7 +26,7 @@ import {
 import { ensureMultiClientSchema } from "./ensureSchema";
 import { runSeed } from "./seedCore";
 import { CONTENT_PILLARS, isManualPlatform, type ContentPillar, type Platform } from "@shared/platforms";
-import { publishToInstagram, publishToFacebook } from "./publishers/meta";
+import { publishToInstagram, publishCarouselToInstagram, publishToFacebook } from "./publishers/meta";
 import { publishToLinkedIn } from "./publishers/linkedin";
 import { publishYouTubeCommunityPost } from "./publishers/youtube";
 
@@ -332,10 +333,24 @@ async function publishPostToPlatform(post: {
       if (!conn.accountId) {
         return { success: false, error: "Instagram Business Account ID not configured." };
       }
+      const igCaption = `${caption}\n\n${hashtags}`.trim();
+      // Carousel = the post's cover (imageUrl) + any linked image slides, in order.
+      const slides = await getImageAssetsForPost(post.id);
+      const carouselUrls = [post.imageUrl, ...slides.map((s) => s.url)].filter(
+        (u, i, arr): u is string => Boolean(u) && arr.indexOf(u) === i
+      );
+      if (carouselUrls.length >= 2) {
+        return publishCarouselToInstagram({
+          accessToken: conn.accessToken,
+          accountId: conn.accountId,
+          caption: igCaption,
+          imageUrls: carouselUrls,
+        });
+      }
       return publishToInstagram({
         accessToken: conn.accessToken,
         accountId: conn.accountId,
-        caption: `${caption}\n\n${hashtags}`.trim(),
+        caption: igCaption,
         imageUrl: post.imageUrl ?? undefined,
       });
     }
