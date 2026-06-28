@@ -131,7 +131,7 @@ export function InstantPostDialog({ trigger }: Props) {
 
   const quickPublishMut = trpc.posts.quickPublish.useMutation({
     onSuccess: (data) => {
-      const results = (data.results ?? []) as { platform: string; success: boolean; error?: string }[];
+      const results = (data ?? []) as { platform: string; success: boolean; error?: string }[];
       const succeeded = results.filter((r) => r.success);
       // Email/WhatsApp are manual channels — the server reports success:false with an
       // explanatory error, but the content is saved to the queue. Don't treat as failures.

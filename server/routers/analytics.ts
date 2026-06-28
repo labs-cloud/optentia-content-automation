@@ -138,7 +138,7 @@ export const analyticsRouter = router({
           status: p.status,
           isWinner: p.isWinner,
         })),
-        pillarBreakdown: [...pillarCounts.entries()].map(([pillar, count]) => ({ pillar, count })),
+        pillarBreakdown: Array.from(pillarCounts.entries()).map(([pillar, count]) => ({ pillar, count })),
         platformBreakdown: byPlatform.map((p) => ({ platform: p.platform, published: p.published, total: p.total })),
         recentSignals: signals.map((s) => ({ direction: s.direction, content: s.content })),
       });
