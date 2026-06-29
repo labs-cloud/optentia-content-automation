@@ -7,6 +7,7 @@
  * This uploads local media directly to object storage and wires the existing
  * posts without publishing or changing their status.
  */
+import "dotenv/config";
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import {
@@ -173,6 +174,12 @@ async function attachCarousel(entry: ManifestEntry) {
 }
 
 async function main() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not set. Run with DOTENV_CONFIG_PATH=.env.vercel.production.local or export DATABASE_URL.",
+    );
+  }
+
   for (const entry of manifest) {
     if (entry.contentType === "carousel") {
       await attachCarousel(entry);
