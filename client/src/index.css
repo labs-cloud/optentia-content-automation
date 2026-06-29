@@ -264,7 +264,6 @@
   [data-slot="card"],
   [data-slot="popover-content"],
   [data-slot="dropdown-menu-content"],
-  [data-slot="dialog-content"],
   [data-slot="sheet-content"],
   [data-slot="select-content"],
   [data-slot="drawer-content"] {

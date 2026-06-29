@@ -301,7 +301,7 @@ export default function ContentQueue() {
 
       {/* Media Preview Dialog */}
       <Dialog open={!!previewPost} onOpenChange={(open) => !open && setPreviewPost(null)}>
-        <DialogContent className="max-w-4xl bg-card border-border/50">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle className="font-display">{previewPost?.title ?? "Media preview"}</DialogTitle>
           </DialogHeader>
@@ -377,11 +377,11 @@ export default function ContentQueue() {
 
       {/* Edit Dialog */}
       <Dialog open={!!editPost} onOpenChange={(o) => !o && setEditPost(null)}>
-        <DialogContent className="max-w-2xl bg-card border-border/50">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl p-0">
+          <DialogHeader className="px-6 pt-6">
             <DialogTitle className="font-display">Edit Post</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto px-6 pb-2">
             {editPost?.imageUrl && (
               <div>
                 <label className="text-xs text-muted-foreground mb-1.5 block">Generated Image</label>
@@ -416,7 +416,7 @@ export default function ContentQueue() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="px-6 pb-6">
             <Button variant="outline" onClick={() => setEditPost(null)}>Cancel</Button>
             <Button
               onClick={() => {
@@ -439,7 +439,7 @@ export default function ContentQueue() {
 
       {/* Reject Dialog */}
       <Dialog open={!!rejectPost} onOpenChange={(o) => !o && setRejectPost(null)}>
-        <DialogContent className="max-w-md bg-card border-border/50">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display">Reject Post</DialogTitle>
           </DialogHeader>
@@ -468,7 +468,7 @@ export default function ContentQueue() {
 
       {/* Schedule Dialog */}
       <Dialog open={!!schedulePost} onOpenChange={(o) => !o && setSchedulePost(null)}>
-        <DialogContent className="max-w-md bg-card border-border/50">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display">Schedule Post</DialogTitle>
           </DialogHeader>
@@ -500,7 +500,7 @@ export default function ContentQueue() {
 
       {/* Variation Dialog */}
       <Dialog open={!!variationPost} onOpenChange={(o) => !o && !variationMutation.isPending && setVariationPost(null)}>
-        <DialogContent className="max-w-md bg-card border-border/50">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="font-display">Create Variation</DialogTitle>
           </DialogHeader>
