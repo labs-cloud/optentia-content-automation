@@ -21,6 +21,13 @@ import { storagePut } from "../server/storage";
 
 const clientId = 30001;
 const mediaDir = process.env.MEDIA_DIR ?? "borukhova-reels/output";
+const requiredR2Env = [
+  "R2_ACCOUNT_ID",
+  "R2_ACCESS_KEY_ID",
+  "R2_SECRET_ACCESS_KEY",
+  "R2_BUCKET",
+  "R2_PUBLIC_BASE_URL",
+] as const;
 
 type MediaKind = "reel" | "carousel" | "image";
 
@@ -177,6 +184,12 @@ async function main() {
   if (!process.env.DATABASE_URL) {
     throw new Error(
       "DATABASE_URL is not set. Run with DOTENV_CONFIG_PATH=.env.vercel.production.local or export DATABASE_URL.",
+    );
+  }
+  const missingR2 = requiredR2Env.filter((name) => !process.env[name]);
+  if (missingR2.length > 0 && process.env.ALLOW_BLOB_FALLBACK !== "1") {
+    throw new Error(
+      `Missing R2 env vars: ${missingR2.join(", ")}. Add them locally or set ALLOW_BLOB_FALLBACK=1 to use Vercel Blob.`,
     );
   }
 
