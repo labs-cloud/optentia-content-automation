@@ -11,6 +11,7 @@ import {
   Sparkles,
   Trash2,
   Trophy,
+  ZoomIn,
   X,
 } from "lucide-react";
 import {
@@ -29,7 +30,9 @@ export type ApprovalPost = {
   platform: string;
   status: string;
   contentPillar: string | null;
+  contentType: string;
   imageUrl: string | null;
+  mediaUrl: string | null;
   scheduledAt: Date | string | null;
   createdAt: Date | string;
   rejectionReason: string | null;
@@ -48,6 +51,7 @@ export type ApprovalActions = {
   onVariation?: (post: ApprovalPost) => void;
   onMarkWinner?: (post: ApprovalPost) => void;
   onDelete?: (post: ApprovalPost) => void;
+  onPreviewMedia?: (post: ApprovalPost) => void;
 };
 
 /** Maps a live platform id onto the prototype's chip / gradient classes. */
@@ -85,14 +89,29 @@ export function ApprovalCard({ post, actions, busy }: { post: ApprovalPost; acti
   const status = STATUS_CONFIG[post.status as PostStatus];
   const manual = isManualPlatform(post.platform);
 
+  const previewUrl = post.imageUrl ?? post.mediaUrl;
+
   return (
     <article className="approval">
       <div className="approval-img">
-        {post.imageUrl ? (
-          <img src={post.imageUrl} alt="" loading="lazy" />
-        ) : (
-          <div className="grad" style={{ background: platGrad(post.platform) }} />
-        )}
+        <button
+          type="button"
+          className="approval-media-button"
+          onClick={() => actions.onPreviewMedia?.(post)}
+          disabled={!previewUrl}
+          aria-label={previewUrl ? "Open media preview" : "No media attached"}
+        >
+          {previewUrl ? (
+            <img src={previewUrl} alt="" loading="lazy" />
+          ) : (
+            <div className="grad" style={{ background: platGrad(post.platform) }} />
+          )}
+          {previewUrl && (
+            <span className="approval-media-badge">
+              <ZoomIn />
+            </span>
+          )}
+        </button>
       </div>
       <div className="approval-body">
         <div className="approval-chips">

@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { createPool, type PoolOptions } from "mysql2";
 import {
   analyticsEvents,
   brainstormIdeas,
@@ -34,10 +35,26 @@ import {
 } from "../drizzle/schema";
 let _db: ReturnType<typeof drizzle> | null = null;
 
+function dbConnectionOptions(databaseUrl: string): string | PoolOptions {
+  const url = new URL(databaseUrl);
+  const ssl = url.searchParams.get("ssl");
+  if (!ssl?.trim().startsWith("{")) return databaseUrl;
+
+  return {
+    host: url.hostname,
+    port: Number(url.port || 3306),
+    user: decodeURIComponent(url.username),
+    password: decodeURIComponent(url.password),
+    database: url.pathname.replace(/^\/+/, ""),
+    ssl: JSON.parse(ssl) as PoolOptions["ssl"],
+  };
+}
+
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      const connection = dbConnectionOptions(process.env.DATABASE_URL);
+      _db = typeof connection === "string" ? drizzle(connection) : drizzle(createPool(connection));
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
