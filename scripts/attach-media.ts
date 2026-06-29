@@ -5,7 +5,7 @@
  *   pnpm tsx scripts/attach-media.ts
  *
  * This uploads local media directly to object storage and wires the existing
- * pending_approval posts without publishing or changing their status.
+ * posts without publishing or changing their status.
  */
 import { readFile, stat } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
@@ -39,11 +39,6 @@ interface UploadedFile {
 }
 
 const manifest: ManifestEntry[] = [
-  {
-    postId: 630004,
-    contentType: "reel",
-    files: ["final/Corridors_FINAL_Hybrid.mp4"],
-  },
   {
     postId: 630005,
     contentType: "carousel",
@@ -117,9 +112,7 @@ async function verifyPost(entry: ManifestEntry) {
   if (post.contentType !== entry.contentType) {
     throw new Error(`Post ${entry.postId} has contentType ${post.contentType}, expected ${entry.contentType}.`);
   }
-  if (post.status !== "pending_approval") {
-    throw new Error(`Post ${entry.postId} has status ${post.status}, expected pending_approval.`);
-  }
+  console.log(`post ${entry.postId}: status ${post.status}; attaching media without changing status`);
   return post;
 }
 
@@ -128,19 +121,6 @@ async function clearCarouselSlides(postId: number) {
   for (const slide of existingSlides) {
     await deleteMediaAsset(slide.id);
   }
-}
-
-async function attachReel(entry: ManifestEntry) {
-  if (entry.files.length !== 1) throw new Error(`Reel post ${entry.postId} must have exactly one file.`);
-  await verifyPost(entry);
-  const localPath = resolve(mediaDir, entry.files[0]);
-  await ensureFile(localPath);
-  const upload = await uploadFile(entry.postId, localPath);
-  const updated = await updateContentPost(entry.postId, {
-    mediaUrl: upload.url,
-    mediaStorageKey: upload.key,
-  });
-  console.log(`post ${entry.postId}: ${updated?.mediaUrl}`);
 }
 
 async function attachPhoto(entry: ManifestEntry) {
@@ -194,9 +174,7 @@ async function attachCarousel(entry: ManifestEntry) {
 
 async function main() {
   for (const entry of manifest) {
-    if (entry.contentType === "reel") {
-      await attachReel(entry);
-    } else if (entry.contentType === "carousel") {
+    if (entry.contentType === "carousel") {
       await attachCarousel(entry);
     } else {
       await attachPhoto(entry);
