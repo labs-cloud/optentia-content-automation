@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createMediaAsset, deleteMediaAsset, getMediaAssets } from "../db";
+import { createMediaAsset, deleteMediaAsset, getContentPostById, getImageAssetsForPost, getMediaAssets } from "../db";
 import { assertClientAccess } from "../_core/clientScope";
 import { protectedProcedure, router } from "../_core/trpc";
 
@@ -9,6 +9,15 @@ export const mediaRouter = router({
     .query(async ({ ctx, input }) => {
       await assertClientAccess(ctx, input.clientId);
       return getMediaAssets(input.type, input.clientId);
+    }),
+
+  forPost: protectedProcedure
+    .input(z.object({ postId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const post = await getContentPostById(input.postId);
+      if (!post?.clientId) return [];
+      await assertClientAccess(ctx, post.clientId);
+      return getImageAssetsForPost(input.postId);
     }),
 
   create: protectedProcedure

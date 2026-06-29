@@ -20,7 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import { CheckSquare, Loader2, Users } from "lucide-react";
+import { CheckSquare, ChevronLeft, ChevronRight, Loader2, Users } from "lucide-react";
 
 const STATUS_TABS = [
   { value: "pending_approval", label: "Pending Review" },
@@ -44,6 +44,8 @@ export default function ContentQueue() {
   const [rejectPost, setRejectPost] = useState<ApprovalPost | null>(null);
   const [schedulePost, setSchedulePost] = useState<ApprovalPost | null>(null);
   const [variationPost, setVariationPost] = useState<ApprovalPost | null>(null);
+  const [previewPost, setPreviewPost] = useState<ApprovalPost | null>(null);
+  const [previewIndex, setPreviewIndex] = useState(0);
   const [variationPlatform, setVariationPlatform] = useState<Platform>("instagram");
   const [rejectReason, setRejectReason] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
@@ -66,6 +68,21 @@ export default function ContentQueue() {
   );
 
   const { data: campaigns } = trpc.campaigns.getCampaigns.useQuery({ clientId }, { enabled });
+  const { data: previewAssets } = trpc.media.forPost.useQuery(
+    { postId: previewPost?.id ?? 0 },
+    { enabled: Boolean(previewPost?.id && previewPost.contentType === "carousel") },
+  );
+
+  const previewUrls = previewPost
+    ? [
+        previewPost.imageUrl ?? previewPost.mediaUrl,
+        ...(previewPost.contentType === "carousel" ? (previewAssets ?? []).map((asset) => asset.url) : []),
+      ].filter((url, index, urls): url is string => Boolean(url) && urls.indexOf(url) === index)
+    : [];
+  const activePreviewUrl = previewUrls[previewIndex] ?? previewUrls[0] ?? null;
+  const activePreviewIsVideo = Boolean(
+    activePreviewUrl && (previewPost?.contentType === "reel" || previewPost?.contentType === "video" || /\.(mp4|mov|webm)(\?|$)/i.test(activePreviewUrl)),
+  );
 
   const invalidate = () => {
     utils.posts.invalidate();
@@ -155,6 +172,11 @@ export default function ContentQueue() {
   const openVariation = (post: ApprovalPost) => {
     setVariationPost(post);
     setVariationPlatform((post.platform === "instagram" ? "linkedin_personal" : "instagram") as Platform);
+  };
+
+  const openPreview = (post: ApprovalPost) => {
+    setPreviewPost(post);
+    setPreviewIndex(0);
   };
 
   const handlePublishNow = (post: ApprovalPost) => {
@@ -269,12 +291,89 @@ export default function ContentQueue() {
                   onVariation: openVariation,
                   onMarkWinner: (p) => markWinnerMutation.mutate({ id: p.id, isWinner: !p.isWinner }),
                   onDelete: handleDelete,
+                  onPreviewMedia: openPreview,
                 }}
               />
             </StaggerItem>
           ))}
         </StaggerList>
       )}
+
+      {/* Media Preview Dialog */}
+      <Dialog open={!!previewPost} onOpenChange={(open) => !open && setPreviewPost(null)}>
+        <DialogContent className="max-w-4xl bg-card border-border/50">
+          <DialogHeader>
+            <DialogTitle className="font-display">{previewPost?.title ?? "Media preview"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative overflow-hidden rounded-lg border border-border/50 bg-black">
+              {activePreviewUrl ? (
+                activePreviewIsVideo ? (
+                  <video
+                    src={activePreviewUrl}
+                    controls
+                    className="max-h-[70vh] w-full bg-black object-contain"
+                  />
+                ) : (
+                  <img
+                    src={activePreviewUrl}
+                    alt=""
+                    className="max-h-[70vh] w-full object-contain"
+                  />
+                )
+              ) : (
+                <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+                  No media attached.
+                </div>
+              )}
+            </div>
+            {previewUrls.length > 1 && (
+              <div className="flex items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setPreviewIndex((index) => Math.max(0, index - 1))}
+                  disabled={previewIndex === 0}
+                  aria-label="Previous slide"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex min-w-0 flex-1 justify-center gap-2 overflow-x-auto">
+                  {previewUrls.map((url, index) => (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => setPreviewIndex(index)}
+                      className={`h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border ${index === previewIndex ? "border-primary" : "border-border/50"}`}
+                      aria-label={`Open slide ${index + 1}`}
+                    >
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setPreviewIndex((index) => Math.min(previewUrls.length - 1, index + 1))}
+                  disabled={previewIndex >= previewUrls.length - 1}
+                  aria-label="Next slide"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            {activePreviewUrl && (
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={() => window.open(activePreviewUrl, "_blank")}>
+                  Open original
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Dialog */}
       <Dialog open={!!editPost} onOpenChange={(o) => !o && setEditPost(null)}>

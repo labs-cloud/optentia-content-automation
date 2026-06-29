@@ -957,6 +957,18 @@
   position: relative;
   overflow: hidden;
 }
+.approval-media-button {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.approval-media-button:disabled {
+  cursor: default;
+}
 .approval-img img {
   position: absolute;
   inset: 0;
@@ -969,6 +981,23 @@
   inset: 0;
   background-size: 200% 200%;
   animation: shimmer 10s ease infinite;
+}
+.approval-media-badge {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: white;
+  background: rgb(0 0 0 / 0.58);
+}
+.approval-media-badge svg {
+  width: 16px;
+  height: 16px;
 }
 .approval-body {
   flex: 1;
