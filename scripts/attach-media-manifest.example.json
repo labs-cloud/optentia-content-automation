@@ -1,0 +1,17 @@
+{
+  "uploads": [
+    {
+      "postId": 630004,
+      "media": ["../borukhova-reels/output/launch-reel.mp4"],
+      "coverImage": "../borukhova-reels/output/launch-reel-cover.jpg"
+    },
+    {
+      "postId": 630005,
+      "media": [
+        "../borukhova-reels/output/carousel-01.jpg",
+        "../borukhova-reels/output/carousel-02.jpg",
+        "../borukhova-reels/output/carousel-03.jpg"
+      ]
+    }
+  ]
+}
