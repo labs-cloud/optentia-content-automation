@@ -1,43 +1,71 @@
 import { useAuth } from "@clerk/clerk-expo";
 import { BlurView } from "expo-blur";
 import { Redirect, Tabs } from "expo-router";
-import { BarChart3, CalendarDays, CheckSquare, LayoutDashboard, Lightbulb, Megaphone } from "lucide-react-native";
-import { StyleSheet } from "react-native";
+import { CalendarDays, CheckSquare, LayoutDashboard, LayoutGrid, Lightbulb, Megaphone } from "lucide-react-native";
+import { StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { DEV_BYPASS } from "@/lib/env";
 import { useTheme } from "@/theme/ThemeProvider";
 
-/** Bottom tab bar mirroring the web BottomNav: Home / Brainstorm / Queue / Campaigns / Calendar. */
+/**
+ * Floating frosted dock (mirrors the web's floating nav): a detached, rounded
+ * pill — margins on every side, a real BlurView frost, a border and a drop
+ * shadow — so it floats over the aurora instead of sitting flush and invisible.
+ */
 export default function TabsLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   if (!DEV_BYPASS) {
     if (!isLoaded) return null;
     if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
   }
 
-  const active = theme === "dark" ? "#7ee4f0" : "#1f8ea3";
-  const inactive = theme === "dark" ? "#a2b4c8" : "#6b7b90";
+  const dark = theme === "dark";
+  const active = dark ? "#7ee4f0" : "#1f8ea3";
+  const inactive = dark ? "#a2b4c8" : "#6b7b90";
+  const border = dark ? "rgba(126,228,240,0.28)" : "rgba(120,140,175,0.38)";
 
   return (
     <Tabs
+      // Without this the tab navigator paints an opaque white scene over the
+      // aurora, so tab screens render white even in dark mode.
+      sceneContainerStyle={{ backgroundColor: "transparent" }}
       screenOptions={{
         headerShown: false,
+        sceneStyle: { backgroundColor: "transparent" },
         tabBarActiveTintColor: active,
         tabBarInactiveTintColor: inactive,
+        tabBarLabelStyle: { fontSize: 10, fontFamily: "DMMono_400Regular", marginTop: 2 },
+        tabBarItemStyle: { paddingTop: 10 },
+        // The bar itself is transparent + shadowed; the rounded frosted fill is
+        // a separate clipped layer below, so the shadow isn't clipped away.
         tabBarStyle: {
           position: "absolute",
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(120,140,175,0.22)",
+          left: 22,
+          right: 22,
+          bottom: Math.max(insets.bottom, 18),
+          height: 66,
+          borderTopWidth: 0,
           backgroundColor: "transparent",
           elevation: 0,
+          shadowColor: dark ? "#000000" : "#1b2a44",
+          shadowOpacity: dark ? 0.55 : 0.22,
+          shadowRadius: 20,
+          shadowOffset: { width: 0, height: 14 },
         },
         tabBarBackground: () => (
-          <BlurView
-            intensity={40}
-            tint={theme === "dark" ? "dark" : "light"}
-            style={StyleSheet.absoluteFill}
-          />
+          <View
+            style={[StyleSheet.absoluteFill, { borderRadius: 33, overflow: "hidden", borderWidth: 1, borderColor: border }]}
+          >
+            <BlurView
+              intensity={dark ? 30 : 48}
+              tint={dark ? "dark" : "light"}
+              style={StyleSheet.absoluteFill}
+            />
+            <View className="bg-surface-2" style={StyleSheet.absoluteFill} />
+          </View>
         ),
       }}
     >
@@ -60,6 +88,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="calendar"
         options={{ title: "Calendar", tabBarIcon: ({ color, size }) => <CalendarDays color={color} size={size} /> }}
+      />
+      <Tabs.Screen
+        name="more"
+        options={{ title: "More", tabBarIcon: ({ color, size }) => <LayoutGrid color={color} size={size} /> }}
       />
     </Tabs>
   );

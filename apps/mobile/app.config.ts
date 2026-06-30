@@ -14,6 +14,15 @@ const config: ExpoConfig = {
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
+  // EAS Update (OTA): JS/asset changes ship to installed builds without a new
+  // native build. `appVersion` policy ties an update to the matching `version`,
+  // so bump `version` (or build natively) whenever native deps change.
+  runtimeVersion: {
+    policy: "appVersion",
+  },
+  updates: {
+    url: "https://u.expo.dev/d44750eb-bce1-4f08-b691-69c9f576b407",
+  },
   splash: {
     image: "./assets/splash.png",
     resizeMode: "contain",

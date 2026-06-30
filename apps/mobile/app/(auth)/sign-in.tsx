@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AIGradient } from "@/components/AIGradient";
+import { useColors } from "@/theme/colors";
 
 /**
  * Minimal Clerk Expo email/password sign-in (Phase 0). OAuth/social can be added
@@ -16,6 +17,7 @@ export default function SignInScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const c = useColors();
 
   const onSignIn = async () => {
     if (!isLoaded) return;
@@ -53,7 +55,7 @@ export default function SignInScreen() {
         <View className="gap-3 rounded-[22px] border border-border bg-surface p-5">
           <TextInput
             placeholder="Email"
-            placeholderTextColor="#8a9bb0"
+            placeholderTextColor={c.muted}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
@@ -62,7 +64,7 @@ export default function SignInScreen() {
           />
           <TextInput
             placeholder="Password"
-            placeholderTextColor="#8a9bb0"
+            placeholderTextColor={c.muted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -75,7 +77,7 @@ export default function SignInScreen() {
             className="mt-1 items-center rounded-xl bg-primary py-3 active:opacity-80"
           >
             {busy ? (
-              <ActivityIndicator color="#06121f" />
+              <ActivityIndicator color={c.onAccent} />
             ) : (
               <Text className="font-semibold text-primary-foreground">Continue</Text>
             )}
