@@ -14,7 +14,6 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { toast } from "sonner";
 import { useLocation } from "wouter";
 
 /** Maps a live platform id onto the prototype's colored platform-icon class. */
@@ -30,28 +29,9 @@ export default function Dashboard() {
   const [, setLocation] = useLocation();
   const { activeClient } = useActiveClient();
   const { clientId, enabled } = useClientScope();
-  const utils = trpc.useUtils();
 
   const { data: summary } = trpc.analytics.summary.useQuery({ clientId }, { enabled });
   const { data: pendingPosts } = trpc.posts.pendingApproval.useQuery({ clientId }, { enabled });
-
-  const approveMutation = trpc.posts.approve.useMutation({
-    onSuccess: () => {
-      toast.success("Post approved — ready to schedule or publish");
-      utils.posts.invalidate();
-      utils.analytics.invalidate();
-    },
-    onError: (e) => toast.error(e.message),
-  });
-
-  const rejectMutation = trpc.posts.reject.useMutation({
-    onSuccess: () => {
-      toast.success("Post rejected");
-      utils.posts.invalidate();
-      utils.analytics.invalidate();
-    },
-    onError: (e) => toast.error(e.message),
-  });
 
   if (!enabled) {
     return (
@@ -72,7 +52,6 @@ export default function Dashboard() {
   const published = summary?.published ?? 0;
   const total = summary?.total ?? 0;
   const approvals = (pendingPosts ?? []).slice(0, 4);
-  const busy = approveMutation.isPending || rejectMutation.isPending;
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -190,17 +169,15 @@ export default function Dashboard() {
                 <div className="appr-mini">
                   <button
                     className="icon-btn ok"
-                    title="Approve"
-                    disabled={busy}
-                    onClick={() => approveMutation.mutate({ id: post.id })}
+                    title="Review in queue"
+                    onClick={() => setLocation("/queue")}
                   >
                     <Check />
                   </button>
                   <button
                     className="icon-btn no"
-                    title="Reject"
-                    disabled={busy}
-                    onClick={() => rejectMutation.mutate({ id: post.id })}
+                    title="Review in queue"
+                    onClick={() => setLocation("/queue")}
                   >
                     <X />
                   </button>

@@ -706,6 +706,7 @@ export const postsRouter = router({
         success: boolean;
         postId?: number;
         externalPostId?: string;
+        externalPostUrl?: string;
         imageUrl?: string;
         error?: string;
       }> = [];
@@ -772,7 +773,7 @@ export const postsRouter = router({
 
           const caption = input.caption;
           const hashtags = input.hashtags ?? "";
-          let publishResult: { success: boolean; externalPostId?: string; error?: string };
+          let publishResult: { success: boolean; externalPostId?: string; externalPostUrl?: string; error?: string };
 
           switch (platform) {
             case "instagram":
@@ -844,6 +845,7 @@ export const postsRouter = router({
             postId: post.id,
             imageUrl: imgUrl,
             externalPostId: publishResult.externalPostId,
+            externalPostUrl: publishResult.externalPostUrl,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

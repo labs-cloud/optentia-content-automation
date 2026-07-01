@@ -58,6 +58,7 @@ export default function ContentQueue() {
   const [editPost, setEditPost] = useState<ApprovalPost | null>(null);
   const [rejectPost, setRejectPost] = useState<ApprovalPost | null>(null);
   const [schedulePost, setSchedulePost] = useState<ApprovalPost | null>(null);
+  const [deletePost, setDeletePost] = useState<ApprovalPost | null>(null);
   const [publishConfirmPost, setPublishConfirmPost] = useState<ApprovalPost | null>(null);
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [variationPost, setVariationPost] = useState<ApprovalPost | null>(null);
@@ -152,6 +153,7 @@ export default function ContentQueue() {
   const deleteMutation = trpc.posts.delete.useMutation({
     onSuccess: () => {
       toast.success("Post deleted");
+      setDeletePost(null);
       invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -249,12 +251,6 @@ export default function ContentQueue() {
       instructions: reworkInstructions.trim() || undefined,
       avoidInstructions: reworkAvoidInstructions.trim() || undefined,
     });
-  };
-
-  const handleDelete = (post: ApprovalPost) => {
-    if (confirm("Delete this post permanently?")) {
-      deleteMutation.mutate({ id: post.id });
-    }
   };
 
   if (!enabled) {
@@ -357,7 +353,7 @@ export default function ContentQueue() {
                   onRegenerate: openRework,
                   onVariation: openVariation,
                   onMarkWinner: (p) => markWinnerMutation.mutate({ id: p.id, isWinner: !p.isWinner }),
-                  onDelete: handleDelete,
+                  onDelete: setDeletePost,
                   onPreviewMedia: openPreview,
                 }}
               />
@@ -365,6 +361,40 @@ export default function ContentQueue() {
           ))}
         </StaggerList>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletePost} onOpenChange={(open) => !open && !deleteMutation.isPending && setDeletePost(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Delete post?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              This permanently removes the post from the queue.
+            </p>
+            {(deletePost?.title || deletePost?.caption) && (
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                <div className="line-clamp-2 font-medium">
+                  {deletePost.title || deletePost.caption}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletePost(null)} disabled={deleteMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deletePost && deleteMutation.mutate({ id: deletePost.id })}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Publish Confirmation Dialog */}
       <Dialog

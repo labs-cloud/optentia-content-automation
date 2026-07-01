@@ -16,6 +16,8 @@ import {
   RefreshCw,
   Image as ImageIcon,
   Check,
+  CheckCircle2,
+  ExternalLink,
   Loader2,
   Shuffle,
 } from "lucide-react";
@@ -48,6 +50,16 @@ type Step = "topic" | "caption" | "concept" | "preview" | "publish";
 interface Props {
   trigger?: ReactNode;
 }
+
+type QuickPublishResult = {
+  platform: string;
+  success: boolean;
+  postId?: number;
+  externalPostId?: string;
+  externalPostUrl?: string;
+  imageUrl?: string;
+  error?: string;
+};
 
 const PLATFORM_KEYS: PlatformKey[] = [
   "instagram",
@@ -93,6 +105,8 @@ export function InstantPostDialog({ trigger }: Props) {
   // Step 5: editable caption + platforms
   const [editedCaption, setEditedCaption] = useState("");
   const [editedHashtags, setEditedHashtags] = useState("");
+  const [confirmingPublish, setConfirmingPublish] = useState(false);
+  const [publishResults, setPublishResults] = useState<QuickPublishResult[] | null>(null);
   const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
     instagram: true,
     linkedin_personal: false,
@@ -131,7 +145,8 @@ export function InstantPostDialog({ trigger }: Props) {
 
   const quickPublishMut = trpc.posts.quickPublish.useMutation({
     onSuccess: (data) => {
-      const results = (data ?? []) as { platform: string; success: boolean; error?: string }[];
+      const results = (data ?? []) as QuickPublishResult[];
+      setPublishResults(results);
       const succeeded = results.filter((r) => r.success);
       // Email/WhatsApp are manual channels — the server reports success:false with an
       // explanatory error, but the content is saved to the queue. Don't treat as failures.
@@ -155,9 +170,7 @@ export function InstantPostDialog({ trigger }: Props) {
         );
       }
       void utils.posts.list.invalidate();
-      if (failed.length === 0) {
-        resetAndClose();
-      }
+      setConfirmingPublish(false);
     },
     onError: (e) => toast.error(`Publish failed: ${e.message}`),
   });
@@ -175,6 +188,8 @@ export function InstantPostDialog({ trigger }: Props) {
       setVariationIdx(0);
       setEditedCaption("");
       setEditedHashtags("");
+      setConfirmingPublish(false);
+      setPublishResults(null);
     }, 200);
   }
 
@@ -236,6 +251,10 @@ export function InstantPostDialog({ trigger }: Props) {
       toast.error("Pick at least one platform");
       return;
     }
+    if (!confirmingPublish) {
+      setConfirmingPublish(true);
+      return;
+    }
     quickPublishMut.mutate({
       clientId,
       caption: editedCaption.trim(),
@@ -246,6 +265,7 @@ export function InstantPostDialog({ trigger }: Props) {
   }
 
   function goBack() {
+    setConfirmingPublish(false);
     if (step === "caption") setStep("topic");
     else if (step === "concept") setStep("caption");
     else if (step === "preview") setStep("concept");
@@ -418,6 +438,41 @@ export function InstantPostDialog({ trigger }: Props) {
 
         {step === "publish" && (
           <div className="space-y-4">
+            {publishResults && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <CheckCircle2 className="size-4 text-primary" />
+                  Publish result
+                </div>
+                <div className="space-y-2">
+                  {publishResults.map((result) => {
+                    const cfg = PLATFORM_CONFIG[result.platform as PlatformKey];
+                    return (
+                      <div key={result.platform} className="flex items-center justify-between gap-3 rounded-md bg-background/70 px-3 py-2 text-xs">
+                        <span>
+                          {cfg?.icon} {cfg?.label ?? result.platform}:{" "}
+                          <span className={result.success ? "text-primary" : "text-destructive"}>
+                            {result.success ? "published" : result.error ?? "failed"}
+                          </span>
+                        </span>
+                        {result.externalPostUrl && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1.5 px-2 text-xs"
+                            onClick={() => window.open(result.externalPostUrl, "_blank", "noopener,noreferrer")}
+                          >
+                            <ExternalLink className="size-3" />
+                            Open
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {previewUrl && (
               <div className="rounded-lg overflow-hidden border border-border bg-muted/30">
                 <img src={previewUrl} alt="Final" className="w-full h-auto max-h-48 object-cover" />
@@ -480,6 +535,14 @@ export function InstantPostDialog({ trigger }: Props) {
                   isn't auto-published.
                 </p>
               )}
+              {confirmingPublish && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+                  <div className="font-medium">Publish to live accounts?</div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    This sends the post now to the selected connected platforms. Manual channels are saved to the queue.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -528,7 +591,7 @@ export function InstantPostDialog({ trigger }: Props) {
               ) : (
                 <ImageIcon className="size-4" />
               )}
-              Publish now
+              {confirmingPublish ? "Confirm Publish" : "Review Publish"}
             </Button>
           )}
         </DialogFooter>
