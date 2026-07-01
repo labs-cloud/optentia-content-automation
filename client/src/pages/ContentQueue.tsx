@@ -33,6 +33,7 @@ const STATUS_TABS = [
 ];
 
 const REWORK_STRATEGIES = [
+  { value: "edit_existing", label: "Edit existing copy" },
   { value: "fresh_angle", label: "New angle" },
   { value: "photo_story", label: "Story from photo" },
   { value: "practical_education", label: "Practical education" },
@@ -58,6 +59,7 @@ export default function ContentQueue() {
   const [variationPlatform, setVariationPlatform] = useState<Platform>("instagram");
   const [reworkStrategy, setReworkStrategy] = useState<(typeof REWORK_STRATEGIES)[number]["value"]>("fresh_angle");
   const [reworkInstructions, setReworkInstructions] = useState("");
+  const [reworkAvoidInstructions, setReworkAvoidInstructions] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
   const [editCaption, setEditCaption] = useState("");
@@ -179,6 +181,7 @@ export default function ContentQueue() {
       toast.success("Post reworked");
       setReworkPost(null);
       setReworkInstructions("");
+      setReworkAvoidInstructions("");
       setRegeneratingId(null);
       invalidate();
     },
@@ -202,8 +205,9 @@ export default function ContentQueue() {
 
   const openRework = (post: ApprovalPost) => {
     setReworkPost(post);
-    setReworkStrategy(post.imageUrl || post.mediaUrl ? "photo_story" : "fresh_angle");
+    setReworkStrategy("edit_existing");
     setReworkInstructions("");
+    setReworkAvoidInstructions("");
   };
 
   const openPreview = (post: ApprovalPost) => {
@@ -222,6 +226,7 @@ export default function ContentQueue() {
       id: post.id,
       strategy: reworkStrategy,
       instructions: reworkInstructions.trim() || undefined,
+      avoidInstructions: reworkAvoidInstructions.trim() || undefined,
     });
   };
 
@@ -547,7 +552,7 @@ export default function ContentQueue() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Direction</label>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Mode</label>
               <Select value={reworkStrategy} onValueChange={(v) => setReworkStrategy(v as typeof reworkStrategy)}>
                 <SelectTrigger className="w-full rounded-xl">
                   <SelectValue />
@@ -562,17 +567,27 @@ export default function ContentQueue() {
               </Select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1.5 block">Optional instructions</label>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Direct commands</label>
               <Textarea
                 value={reworkInstructions}
                 onChange={(e) => setReworkInstructions(e.target.value)}
                 rows={4}
-                placeholder="Example: make it more personal, lean into the photo, focus on trust, avoid sounding salesy..."
+                placeholder="Example: make it shorter, keep the same idea, make the first line stronger, remove repetition..."
+                className="bg-muted/30 border-border/50 resize-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">What not to do</label>
+              <Textarea
+                value={reworkAvoidInstructions}
+                onChange={(e) => setReworkAvoidInstructions(e.target.value)}
+                rows={3}
+                placeholder="Example: do not change the angle, do not add emojis, do not make it salesy, do not remove the attorney advertising disclaimer..."
                 className="bg-muted/30 border-border/50 resize-none"
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              This updates the current post copy and keeps the media, status, platform, and approval flow unchanged.
+              Edit existing copy preserves the idea and applies your commands. Other modes can create a new path for the same media. Media, status, platform, and approval flow stay unchanged.
             </p>
           </div>
           <DialogFooter>
