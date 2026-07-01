@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -42,6 +43,7 @@ export default function ContentLibrary() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
+  const [deletePost, setDeletePost] = useState<{ id: number; title: string | null; caption: string | null } | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -58,6 +60,7 @@ export default function ContentLibrary() {
   const deleteMutation = trpc.posts.delete.useMutation({
     onSuccess: () => {
       toast.success("Post deleted");
+      setDeletePost(null);
       utils.posts.list.invalidate();
       utils.analytics.summary.invalidate();
     },
@@ -185,7 +188,9 @@ export default function ContentLibrary() {
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => deleteMutation.mutate({ id: post.id })}
+                      onClick={() => setDeletePost({ id: post.id, title: post.title, caption: post.caption })}
+                      disabled={deleteMutation.isPending}
+                      aria-label="Delete post"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -211,6 +216,38 @@ export default function ContentLibrary() {
           })}
         </div>
       )}
+
+      <Dialog open={!!deletePost} onOpenChange={(open) => !open && !deleteMutation.isPending && setDeletePost(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Delete post?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              This permanently removes the post from the library.
+            </p>
+            {(deletePost?.title || deletePost?.caption) && (
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                <div className="line-clamp-2 font-medium">
+                  {deletePost.title || truncate(deletePost.caption ?? "", 120)}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletePost(null)} disabled={deleteMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deletePost && deleteMutation.mutate({ id: deletePost.id })}
+              disabled={deleteMutation.isPending}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

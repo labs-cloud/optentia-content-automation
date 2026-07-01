@@ -27,6 +27,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 
 const PLATFORM_ENUM = z.enum(PLATFORMS);
 const PILLAR_ENUM = z.enum(CONTENT_PILLARS);
+const REWORK_STRATEGY_ENUM = z.enum(["edit_existing", "fresh_angle", "photo_story", "practical_education", "stronger_cta", "contrarian"]);
 
 type PlatformKey = z.infer<typeof PLATFORM_ENUM>;
 
@@ -42,6 +43,22 @@ async function safeGenerateForPlatform(
     return { url: result.url };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function parseGeneratedPostJson(content: string): { caption: string; hashtags: string; hook: string; scriptText?: string; subject?: string } {
+  try {
+    const parsed = JSON.parse(content) as Partial<{ caption: string; hashtags: string; hook: string; scriptText: string; subject: string }>;
+    if (!parsed.caption?.trim()) throw new Error("caption missing");
+    return {
+      caption: parsed.caption,
+      hashtags: parsed.hashtags ?? "",
+      hook: parsed.hook ?? parsed.subject ?? parsed.caption.slice(0, 100),
+      scriptText: parsed.scriptText,
+      subject: parsed.subject,
+    };
+  } catch {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" });
   }
 }
 
@@ -244,6 +261,7 @@ export const postsRouter = router({
       const post = await getContentPostById(input.id);
       if (!post) throw new TRPCError({ code: "NOT_FOUND" });
       if (!post.clientId) throw new TRPCError({ code: "BAD_REQUEST", message: "Post has no client assigned" });
+      await assertClientAccess(ctx, post.clientId);
       const promptCtx = await loadPromptContext(post.clientId, { campaignId: post.campaignId });
 
       const platform = (input.targetPlatform ?? post.platform) as Platform;
@@ -268,12 +286,7 @@ export const postsRouter = router({
 
       const content = response.choices[0]?.message?.content;
       if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
-      let parsed: { caption: string; hashtags: string; hook: string; scriptText?: string };
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" });
-      }
+      const parsed = parseGeneratedPostJson(content);
 
       const created = await createContentPost({
         clientId: post.clientId,
@@ -291,6 +304,86 @@ export const postsRouter = router({
         contentType: platform === "youtube" ? "video" : "text",
       });
       return created;
+    }),
+
+  regenerateCaption: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      strategy: REWORK_STRATEGY_ENUM.default("fresh_angle"),
+      instructions: z.string().optional(),
+      avoidInstructions: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!post.clientId) throw new TRPCError({ code: "BAD_REQUEST", message: "Post has no client assigned" });
+      await assertClientAccess(ctx, post.clientId);
+
+      const promptCtx = await loadPromptContext(post.clientId, { campaignId: post.campaignId });
+      const platform = post.platform as Platform;
+      const strategyInstruction: Record<z.infer<typeof REWORK_STRATEGY_ENUM>, string> = {
+        edit_existing: "Edit the existing copy directly. Preserve the same idea, argument, facts, order of reasoning, CTA intent, and legal disclaimers. Do not introduce a new angle. Make only the requested copy changes.",
+        fresh_angle: "Find a new strategic angle for the same asset. The result should feel like a new post idea, not a sentence-level rewrite.",
+        photo_story: "Use the attached image as the anchor. Infer a credible story, point of view, or professional context from the visual and write around that image.",
+        practical_education: "Turn this into useful practical education. Make the post teach one clear thing the audience can act on.",
+        stronger_cta: "Keep the core idea but make the path to action stronger, clearer, and more conversion-oriented without sounding pushy.",
+        contrarian: "Create a sharper contrarian take. Make the opening bolder while staying accurate, professional, and compliant.",
+      };
+      const visualUrl =
+        post.imageUrl && (post.contentType === "image" || post.contentType === "carousel")
+          ? post.imageUrl
+          : null;
+      const { system, user } = buildPostPrompt(promptCtx, {
+        platform,
+        contentPillar: (post.contentPillar ?? undefined) as any,
+        extraInstructions: [
+          "Rework this existing post in place.",
+          "Keep the same core idea, legal disclaimers, audience, platform, and CTA intent.",
+          input.strategy === "edit_existing"
+            ? "Do not change the post idea, factual claims, message path, or strategic angle unless the direct command explicitly says to."
+            : "You may change the angle, structure, hook, and messaging path.",
+          "Return a complete new title/hook, caption, and hashtags.",
+          "Do not mention that this is regenerated or reworked.",
+          strategyInstruction[input.strategy],
+          visualUrl ? "Use the attached image as creative context. The copy should feel intentionally paired with the image." : null,
+          "Existing title/hook:",
+          `"""${post.title ?? ""}"""`,
+          "Existing caption:",
+          `"""${post.caption ?? ""}"""`,
+          "Existing hashtags:",
+          `"""${post.hashtags ?? ""}"""`,
+          input.instructions ? `DIRECT COMMANDS — do exactly this:\n${input.instructions}` : null,
+          input.avoidInstructions ? `DO NOT — hard negative constraints:\n${input.avoidInstructions}` : null,
+        ].filter(Boolean).join("\n"),
+      });
+
+      const response = await trackedInvokeLLM(
+        {
+          messages: [
+            { role: "system", content: system },
+            {
+              role: "user",
+              content: visualUrl
+                ? [{ type: "text", text: user }, { type: "image_url", image_url: { url: visualUrl } }]
+                : user,
+            },
+          ],
+        },
+        { clientId: post.clientId, userId: ctx.user.id, taskType: "rework_post", summary: `rework post ${post.id} / ${input.strategy}` },
+      );
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
+      const parsed = parseGeneratedPostJson(content);
+
+      return updateContentPost(input.id, {
+        title: (parsed.subject ?? parsed.hook)?.substring(0, 100),
+        caption: parsed.caption,
+        hashtags: parsed.hashtags,
+        scriptText: parsed.scriptText,
+        generationPrompt: user,
+        aiGenerated: true,
+      });
     }),
 
   submitForApproval: protectedProcedure
@@ -436,7 +529,7 @@ export const postsRouter = router({
 
       const caption = post.caption ?? "";
       const hashtags = post.hashtags ?? "";
-      let result: { success: boolean; externalPostId?: string; error?: string };
+      let result: { success: boolean; externalPostId?: string; externalPostUrl?: string; error?: string };
 
       switch (post.platform) {
         case "instagram": {
@@ -517,7 +610,7 @@ export const postsRouter = router({
         content: `Your ${post.platform} post "${post.title || caption.substring(0, 60)}..." was published successfully.`,
       });
 
-      return { success: true, externalPostId: result.externalPostId };
+      return { success: true, externalPostId: result.externalPostId, externalPostUrl: result.externalPostUrl };
     }),
 
   /** Upload a user-supplied image (base64) to R2 and return a /manus-storage URL. */
@@ -613,6 +706,7 @@ export const postsRouter = router({
         success: boolean;
         postId?: number;
         externalPostId?: string;
+        externalPostUrl?: string;
         imageUrl?: string;
         error?: string;
       }> = [];
@@ -679,7 +773,7 @@ export const postsRouter = router({
 
           const caption = input.caption;
           const hashtags = input.hashtags ?? "";
-          let publishResult: { success: boolean; externalPostId?: string; error?: string };
+          let publishResult: { success: boolean; externalPostId?: string; externalPostUrl?: string; error?: string };
 
           switch (platform) {
             case "instagram":
@@ -751,6 +845,7 @@ export const postsRouter = router({
             postId: post.id,
             imageUrl: imgUrl,
             externalPostId: publishResult.externalPostId,
+            externalPostUrl: publishResult.externalPostUrl,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

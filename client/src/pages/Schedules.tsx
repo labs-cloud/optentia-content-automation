@@ -36,6 +36,8 @@ export default function Schedules() {
   const [postsPerRun, setPostsPerRun] = useState(2);
   const [selectedPillars, setSelectedPillars] = useState<string[]>(["strong_opinion", "practical_education"]);
   const [generationPrompt, setGenerationPrompt] = useState("");
+  const [deleteSchedule, setDeleteSchedule] = useState<{ id: number; name: string } | null>(null);
+  const [toggleSchedule, setToggleSchedule] = useState<{ id: number; name: string; isActive: boolean } | null>(null);
 
   const utils = trpc.useUtils();
   const { data: schedules, isLoading } = trpc.schedules.list.useQuery({ clientId }, { enabled });
@@ -61,6 +63,7 @@ export default function Schedules() {
   const deleteMutation = trpc.schedules.delete.useMutation({
     onSuccess: () => {
       toast.success("Schedule deleted");
+      setDeleteSchedule(null);
       utils.schedules.list.invalidate();
     },
     onError: (e) => toast.error(e.message),
@@ -195,15 +198,16 @@ export default function Schedules() {
                     <div className="flex items-center gap-2 shrink-0">
                       <Switch
                         checked={schedule.isActive}
-                        onCheckedChange={(v) => toggleMutation.mutate({ id: schedule.id, isActive: v })}
+                        onCheckedChange={(v) => setToggleSchedule({ id: schedule.id, name: schedule.name, isActive: v })}
                         disabled={toggleMutation.isPending}
                       />
                       <Button
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => deleteMutation.mutate({ id: schedule.id })}
+                        onClick={() => setDeleteSchedule({ id: schedule.id, name: schedule.name })}
                         disabled={deleteMutation.isPending}
+                        aria-label={`Delete ${schedule.name}`}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -228,6 +232,62 @@ export default function Schedules() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={!!toggleSchedule} onOpenChange={(open) => !open && !toggleMutation.isPending && setToggleSchedule(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              {toggleSchedule?.isActive ? "Activate schedule?" : "Pause schedule?"}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {toggleSchedule?.isActive
+              ? `"${toggleSchedule.name}" will resume automatic generation at its configured time.`
+              : `"${toggleSchedule?.name}" will stop running until you activate it again.`}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setToggleSchedule(null)} disabled={toggleMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!toggleSchedule) return;
+                toggleMutation.mutate(toggleSchedule, {
+                  onSuccess: () => setToggleSchedule(null),
+                });
+              }}
+              disabled={toggleMutation.isPending}
+            >
+              {toggleMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {toggleSchedule?.isActive ? "Activate" : "Pause"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteSchedule} onOpenChange={(open) => !open && !deleteMutation.isPending && setDeleteSchedule(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Delete schedule?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This removes "{deleteSchedule?.name}" and stops its future runs. Existing posts stay in the queue.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteSchedule(null)} disabled={deleteMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteSchedule && deleteMutation.mutate({ id: deleteSchedule.id })}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Dialog */}
       <Dialog open={showCreate} onOpenChange={(o) => { if (!o) { setShowCreate(false); resetForm(); } }}>

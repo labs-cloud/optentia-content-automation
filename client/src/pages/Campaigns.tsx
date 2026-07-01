@@ -27,7 +27,7 @@ import {
   type CampaignGoal,
   type Platform,
 } from "@shared/platforms";
-import { Briefcase, Megaphone, Plus, Sparkles } from "lucide-react";
+import { Briefcase, CheckCircle2, Loader2, Megaphone, Plus, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocation, useSearch } from "wouter";
@@ -49,6 +49,7 @@ export default function Campaigns() {
   const [platforms, setPlatforms] = useState<Platform[]>(["instagram", "linkedin_personal"]);
   const [brief, setBrief] = useState("");
   const [selectedIdeas, setSelectedIdeas] = useState<number[]>([]);
+  const [generatedCampaign, setGeneratedCampaign] = useState<{ id: number; name: string } | null>(null);
 
   useEffect(() => {
     if (new URLSearchParams(search).get("new") === "1") {
@@ -82,26 +83,29 @@ export default function Campaigns() {
       toast.error("Pick at least one platform");
       return;
     }
-    const campaign = await createMutation.mutateAsync({
-      clientId,
-      name,
-      goal,
-      durationDays: duration,
-      platforms,
-      brief: brief || undefined,
-    });
-    await generateMutation.mutateAsync({
-      clientId,
-      campaignId: campaign.id,
-      ideaIds: selectedIdeas.length > 0 ? selectedIdeas : undefined,
-    });
-    toast.success("Campaign generated");
-    utils.campaigns.getCampaigns.invalidate({ clientId });
-    setWizardOpen(false);
-    setName("");
-    setBrief("");
-    setSelectedIdeas([]);
-    setLocation(`/campaigns/${campaign.id}`);
+    try {
+      const campaign = await createMutation.mutateAsync({
+        clientId,
+        name,
+        goal,
+        durationDays: duration,
+        platforms,
+        brief: brief || undefined,
+      });
+      await generateMutation.mutateAsync({
+        clientId,
+        campaignId: campaign.id,
+        ideaIds: selectedIdeas.length > 0 ? selectedIdeas : undefined,
+      });
+      toast.success("Campaign generated");
+      await utils.campaigns.getCampaigns.invalidate({ clientId });
+      setGeneratedCampaign({ id: campaign.id, name: campaign.name });
+      setName("");
+      setBrief("");
+      setSelectedIdeas([]);
+    } catch {
+      // Mutation onError handlers show the specific failure.
+    }
   };
 
   if (!enabled) {
@@ -157,7 +161,41 @@ export default function Campaigns() {
 
       <Dialog open={wizardOpen} onOpenChange={(open) => !launching && setWizardOpen(open)}>
         <DialogContent className="sm:max-w-xl rounded-2xl max-h-[90vh] overflow-y-auto">
-          {launching ? (
+          {generatedCampaign ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Campaign generated
+                </DialogTitle>
+                <DialogDescription>
+                  {generatedCampaign.name} is ready with its content plan and generated posts.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    setWizardOpen(false);
+                    setGeneratedCampaign(null);
+                  }}
+                >
+                  Stay here
+                </Button>
+                <Button
+                  className="rounded-xl"
+                  onClick={() => {
+                    setWizardOpen(false);
+                    setLocation(`/campaigns/${generatedCampaign.id}`);
+                    setGeneratedCampaign(null);
+                  }}
+                >
+                  Open campaign
+                </Button>
+              </DialogFooter>
+            </>
+          ) : launching ? (
             <AIThinkingState
               label="Building the campaign"
               messages={[
@@ -304,8 +342,9 @@ export default function Campaigns() {
                 <Button variant="outline" className="rounded-xl" onClick={() => setWizardOpen(false)}>
                   Cancel
                 </Button>
-                <Button className="rounded-xl" onClick={launch}>
-                  <Sparkles className="h-4 w-4 mr-1.5" /> Generate campaign
+                <Button className="rounded-xl" onClick={launch} disabled={launching}>
+                  {launching ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}
+                  Generate campaign
                 </Button>
               </DialogFooter>
             </>

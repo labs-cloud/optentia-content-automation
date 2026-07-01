@@ -20,7 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import { CheckSquare, ChevronLeft, ChevronRight, Loader2, Users } from "lucide-react";
+import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, ExternalLink, Loader2, Send, Users } from "lucide-react";
 
 const STATUS_TABS = [
   { value: "pending_approval", label: "Pending Review" },
@@ -31,6 +31,21 @@ const STATUS_TABS = [
   { value: "rejected", label: "Rejected" },
   { value: "failed", label: "Failed" },
 ];
+
+const REWORK_STRATEGIES = [
+  { value: "edit_existing", label: "Edit existing copy" },
+  { value: "fresh_angle", label: "New angle" },
+  { value: "photo_story", label: "Story from photo" },
+  { value: "practical_education", label: "Practical education" },
+  { value: "stronger_cta", label: "Stronger CTA" },
+  { value: "contrarian", label: "Contrarian take" },
+] as const;
+
+type PublishResult = {
+  post: ApprovalPost;
+  externalPostId?: string;
+  externalPostUrl?: string;
+};
 
 export default function ContentQueue() {
   const [, setLocation] = useLocation();
@@ -43,16 +58,24 @@ export default function ContentQueue() {
   const [editPost, setEditPost] = useState<ApprovalPost | null>(null);
   const [rejectPost, setRejectPost] = useState<ApprovalPost | null>(null);
   const [schedulePost, setSchedulePost] = useState<ApprovalPost | null>(null);
+  const [deletePost, setDeletePost] = useState<ApprovalPost | null>(null);
+  const [publishConfirmPost, setPublishConfirmPost] = useState<ApprovalPost | null>(null);
+  const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [variationPost, setVariationPost] = useState<ApprovalPost | null>(null);
+  const [reworkPost, setReworkPost] = useState<ApprovalPost | null>(null);
   const [previewPost, setPreviewPost] = useState<ApprovalPost | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [variationPlatform, setVariationPlatform] = useState<Platform>("instagram");
+  const [reworkStrategy, setReworkStrategy] = useState<(typeof REWORK_STRATEGIES)[number]["value"]>("fresh_angle");
+  const [reworkInstructions, setReworkInstructions] = useState("");
+  const [reworkAvoidInstructions, setReworkAvoidInstructions] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
   const [editCaption, setEditCaption] = useState("");
   const [editHashtags, setEditHashtags] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [publishingId, setPublishingId] = useState<number | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -84,9 +107,11 @@ export default function ContentQueue() {
     activePreviewUrl && (previewPost?.contentType === "reel" || previewPost?.contentType === "video" || /\.(mp4|mov|webm)(\?|$)/i.test(activePreviewUrl)),
   );
 
-  const invalidate = () => {
-    utils.posts.invalidate();
-    utils.analytics.invalidate();
+  const invalidate = async () => {
+    await Promise.all([
+      utils.posts.invalidate(),
+      utils.analytics.invalidate(),
+    ]);
   };
 
   const approveMutation = trpc.posts.approve.useMutation({
@@ -128,19 +153,31 @@ export default function ContentQueue() {
   const deleteMutation = trpc.posts.delete.useMutation({
     onSuccess: () => {
       toast.success("Post deleted");
+      setDeletePost(null);
       invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
 
   const publishNowMutation = trpc.posts.publishNow.useMutation({
-    onSuccess: () => {
-      toast.success("Post published successfully!");
+    onMutate: () => {
+      toast.loading("Publishing to the live account...", { id: "publish-now" });
+    },
+    onSuccess: async (result) => {
+      toast.success("Post published", { id: "publish-now" });
+      if (publishConfirmPost) {
+        setPublishResult({
+          post: publishConfirmPost,
+          externalPostId: result.externalPostId,
+          externalPostUrl: result.externalPostUrl,
+        });
+      }
+      setPublishConfirmPost(null);
       setPublishingId(null);
-      invalidate();
+      await invalidate();
     },
     onError: (e) => {
-      toast.error(`Publish failed: ${e.message}`);
+      toast.error(`Publish failed: ${e.message}`, { id: "publish-now" });
       setPublishingId(null);
     },
   });
@@ -162,6 +199,21 @@ export default function ContentQueue() {
     onError: (e) => toast.error(e.message),
   });
 
+  const regenerateCaptionMutation = trpc.posts.regenerateCaption.useMutation({
+    onSuccess: () => {
+      toast.success("Post reworked");
+      setReworkPost(null);
+      setReworkInstructions("");
+      setReworkAvoidInstructions("");
+      setRegeneratingId(null);
+      invalidate();
+    },
+    onError: (e) => {
+      toast.error(e.message);
+      setRegeneratingId(null);
+    },
+  });
+
   const openEdit = (post: ApprovalPost) => {
     setEditPost(post);
     setEditCaption(post.caption ?? "");
@@ -174,6 +226,13 @@ export default function ContentQueue() {
     setVariationPlatform((post.platform === "instagram" ? "linkedin_personal" : "instagram") as Platform);
   };
 
+  const openRework = (post: ApprovalPost) => {
+    setReworkPost(post);
+    setReworkStrategy("edit_existing");
+    setReworkInstructions("");
+    setReworkAvoidInstructions("");
+  };
+
   const openPreview = (post: ApprovalPost) => {
     setPreviewPost(post);
     setPreviewIndex(0);
@@ -184,10 +243,14 @@ export default function ContentQueue() {
     publishNowMutation.mutate({ id: post.id });
   };
 
-  const handleDelete = (post: ApprovalPost) => {
-    if (confirm("Delete this post permanently?")) {
-      deleteMutation.mutate({ id: post.id });
-    }
+  const handleReworkPost = (post: ApprovalPost) => {
+    setRegeneratingId(post.id);
+    regenerateCaptionMutation.mutate({
+      id: post.id,
+      strategy: reworkStrategy,
+      instructions: reworkInstructions.trim() || undefined,
+      avoidInstructions: reworkAvoidInstructions.trim() || undefined,
+    });
   };
 
   if (!enabled) {
@@ -277,7 +340,7 @@ export default function ContentQueue() {
             <StaggerItem key={post.id}>
               <ApprovalCard
                 post={post}
-                busy={publishingId === post.id}
+                busy={publishingId === post.id || regeneratingId === post.id}
                 actions={{
                   onApprove: (p) => approveMutation.mutate({ id: p.id }),
                   onReject: (p) => setRejectPost(p),
@@ -286,11 +349,11 @@ export default function ContentQueue() {
                     setSchedulePost(p);
                     setScheduleDate("");
                   },
-                  onPublish: handlePublishNow,
-                  onRegenerate: (p) => variationMutation.mutate({ id: p.id }),
+                  onPublish: (p) => setPublishConfirmPost(p),
+                  onRegenerate: openRework,
                   onVariation: openVariation,
                   onMarkWinner: (p) => markWinnerMutation.mutate({ id: p.id, isWinner: !p.isWinner }),
-                  onDelete: handleDelete,
+                  onDelete: setDeletePost,
                   onPreviewMedia: openPreview,
                 }}
               />
@@ -298,6 +361,125 @@ export default function ContentQueue() {
           ))}
         </StaggerList>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deletePost} onOpenChange={(open) => !open && !deleteMutation.isPending && setDeletePost(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Delete post?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              This permanently removes the post from the queue.
+            </p>
+            {(deletePost?.title || deletePost?.caption) && (
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                <div className="line-clamp-2 font-medium">
+                  {deletePost.title || deletePost.caption}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletePost(null)} disabled={deleteMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deletePost && deleteMutation.mutate({ id: deletePost.id })}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Publish Confirmation Dialog */}
+      <Dialog
+        open={!!publishConfirmPost}
+        onOpenChange={(open) => {
+          if (!open && !publishNowMutation.isPending) setPublishConfirmPost(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Publish this post?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+              <div className="text-xs text-muted-foreground">Live destination</div>
+              <div className="mt-1 font-medium">
+                {publishConfirmPost
+                  ? `${PLATFORM_CONFIG[publishConfirmPost.platform as Platform]?.label ?? publishConfirmPost.platform}${activeClient?.name ? ` · ${activeClient.name}` : ""}`
+                  : "Selected platform"}
+              </div>
+            </div>
+            {publishConfirmPost?.title && (
+              <p className="text-sm font-medium">{publishConfirmPost.title}</p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              This sends the approved post to the connected social account now. The queue will move it to Published after the platform confirms it.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPublishConfirmPost(null)}
+              disabled={publishNowMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => publishConfirmPost && handlePublishNow(publishConfirmPost)}
+              disabled={publishNowMutation.isPending}
+            >
+              {publishNowMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+              Publish Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Publish Result Dialog */}
+      <Dialog open={!!publishResult} onOpenChange={(open) => !open && setPublishResult(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
+              Published
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              The post is live and has been moved to the Published tab.
+            </p>
+            {publishResult?.externalPostId && (
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                <div className="text-xs text-muted-foreground">Platform post ID</div>
+                <div className="mt-1 break-all font-mono text-xs">{publishResult.externalPostId}</div>
+              </div>
+            )}
+            {!publishResult?.externalPostUrl && (
+              <p className="text-xs text-muted-foreground">
+                The platform confirmed the publish but did not return a public permalink.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActiveTab("published")}>
+              View Published
+            </Button>
+            {publishResult?.externalPostUrl ? (
+              <Button onClick={() => window.open(publishResult.externalPostUrl, "_blank", "noopener,noreferrer")}>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open Published Post
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Media Preview Dialog */}
       <Dialog open={!!previewPost} onOpenChange={(open) => !open && setPreviewPost(null)}>
@@ -493,6 +675,67 @@ export default function ContentQueue() {
               disabled={scheduleMutation.isPending || !scheduleDate}
             >
               Schedule Post
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Variation Dialog */}
+      <Dialog open={!!reworkPost} onOpenChange={(o) => !o && !regenerateCaptionMutation.isPending && setReworkPost(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Rework post</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Mode</label>
+              <Select value={reworkStrategy} onValueChange={(v) => setReworkStrategy(v as typeof reworkStrategy)}>
+                <SelectTrigger className="w-full rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REWORK_STRATEGIES.map((strategy) => (
+                    <SelectItem key={strategy.value} value={strategy.value}>
+                      {strategy.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Direct commands</label>
+              <Textarea
+                value={reworkInstructions}
+                onChange={(e) => setReworkInstructions(e.target.value)}
+                rows={4}
+                placeholder="Example: make it shorter, keep the same idea, make the first line stronger, remove repetition..."
+                className="bg-muted/30 border-border/50 resize-none"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">What not to do</label>
+              <Textarea
+                value={reworkAvoidInstructions}
+                onChange={(e) => setReworkAvoidInstructions(e.target.value)}
+                rows={3}
+                placeholder="Example: do not change the angle, do not add emojis, do not make it salesy, do not remove the attorney advertising disclaimer..."
+                className="bg-muted/30 border-border/50 resize-none"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Edit existing copy preserves the idea and applies your commands. Other modes can create a new path for the same media. Media, status, platform, and approval flow stay unchanged.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReworkPost(null)} disabled={regenerateCaptionMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => reworkPost && handleReworkPost(reworkPost)}
+              disabled={regenerateCaptionMutation.isPending}
+            >
+              {regenerateCaptionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Rework Post
             </Button>
           </DialogFooter>
         </DialogContent>

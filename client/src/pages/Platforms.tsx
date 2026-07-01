@@ -68,6 +68,7 @@ export default function Platforms() {
   const { clientId, enabled } = useClientScope();
   const [editPlatform, setEditPlatform] = useState<CredentialPlatform | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [lastCheck, setLastCheck] = useState<{ platform?: string; success: boolean; message: string } | null>(null);
 
   const utils = trpc.useUtils();
   const { data: platforms } = trpc.platforms.list.useQuery({ clientId }, { enabled });
@@ -76,13 +77,15 @@ export default function Platforms() {
     onSuccess: () => {
       toast.success("Platform credentials saved");
       setEditPlatform(null);
+      setLastCheck(null);
       utils.platforms.list.invalidate();
     },
     onError: (e) => toast.error(e.message),
   });
 
   const testMutation = trpc.platforms.testConnection.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data, vars) => {
+      setLastCheck({ platform: vars.platform, success: data.success, message: data.message });
       if (data.success) {
         toast.success(data.message);
       } else {
@@ -95,6 +98,7 @@ export default function Platforms() {
 
   const checkAllMutation = trpc.platforms.checkAllConnections.useMutation({
     onSuccess: () => {
+      setLastCheck({ success: true, message: "All connections checked. Review each card's status below." });
       toast.success("Checked all connections");
       utils.platforms.list.invalidate();
     },
@@ -165,6 +169,16 @@ export default function Platforms() {
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {lastCheck && (
+          <div className={`md:col-span-2 rounded-lg border px-4 py-3 text-sm ${
+            lastCheck.success
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              : "border-red-500/30 bg-red-500/10 text-red-300"
+          }`}>
+            {lastCheck.platform ? `${PLATFORM_CONFIG[lastCheck.platform as Platform]?.label ?? lastCheck.platform}: ` : ""}
+            {lastCheck.message}
+          </div>
+        )}
         {PLATFORM_ORDER.map((platform) => {
           const cfg = PLATFORM_CONFIG[platform];
           const conn = platforms?.find((p) => p.platform === platform);
@@ -243,6 +257,7 @@ export default function Platforms() {
                     size="sm"
                     className="flex-1 gap-1.5 text-xs"
                     onClick={() => openEdit(platform as CredentialPlatform)}
+                    disabled={testMutation.isPending}
                   >
                     <Settings className="h-3.5 w-3.5" />
                     Configure
@@ -260,7 +275,7 @@ export default function Platforms() {
                       ) : (
                         <Zap className="h-3.5 w-3.5" />
                       )}
-                      Test
+                      {testMutation.isPending ? "Testing" : "Test"}
                     </Button>
                   )}
                 </div>
@@ -315,7 +330,8 @@ export default function Platforms() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditPlatform(null)}>Cancel</Button>
             <Button onClick={handleSave} disabled={upsertMutation.isPending}>
-              {upsertMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Credentials"}
+              {upsertMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {upsertMutation.isPending ? "Saving" : "Save Credentials"}
             </Button>
           </DialogFooter>
         </DialogContent>
