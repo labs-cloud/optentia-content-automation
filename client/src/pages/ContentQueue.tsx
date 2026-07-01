@@ -53,6 +53,7 @@ export default function ContentQueue() {
   const [editHashtags, setEditHashtags] = useState("");
   const [editTitle, setEditTitle] = useState("");
   const [publishingId, setPublishingId] = useState<number | null>(null);
+  const [regeneratingId, setRegeneratingId] = useState<number | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -162,6 +163,18 @@ export default function ContentQueue() {
     onError: (e) => toast.error(e.message),
   });
 
+  const regenerateCaptionMutation = trpc.posts.regenerateCaption.useMutation({
+    onSuccess: () => {
+      toast.success("Caption regenerated");
+      setRegeneratingId(null);
+      invalidate();
+    },
+    onError: (e) => {
+      toast.error(e.message);
+      setRegeneratingId(null);
+    },
+  });
+
   const openEdit = (post: ApprovalPost) => {
     setEditPost(post);
     setEditCaption(post.caption ?? "");
@@ -182,6 +195,11 @@ export default function ContentQueue() {
   const handlePublishNow = (post: ApprovalPost) => {
     setPublishingId(post.id);
     publishNowMutation.mutate({ id: post.id });
+  };
+
+  const handleRegenerateCaption = (post: ApprovalPost) => {
+    setRegeneratingId(post.id);
+    regenerateCaptionMutation.mutate({ id: post.id });
   };
 
   const handleDelete = (post: ApprovalPost) => {
@@ -277,7 +295,7 @@ export default function ContentQueue() {
             <StaggerItem key={post.id}>
               <ApprovalCard
                 post={post}
-                busy={publishingId === post.id}
+                busy={publishingId === post.id || regeneratingId === post.id}
                 actions={{
                   onApprove: (p) => approveMutation.mutate({ id: p.id }),
                   onReject: (p) => setRejectPost(p),
@@ -287,7 +305,7 @@ export default function ContentQueue() {
                     setScheduleDate("");
                   },
                   onPublish: handlePublishNow,
-                  onRegenerate: (p) => variationMutation.mutate({ id: p.id }),
+                  onRegenerate: handleRegenerateCaption,
                   onVariation: openVariation,
                   onMarkWinner: (p) => markWinnerMutation.mutate({ id: p.id, isWinner: !p.isWinner }),
                   onDelete: handleDelete,

@@ -45,6 +45,22 @@ async function safeGenerateForPlatform(
   }
 }
 
+function parseGeneratedPostJson(content: string): { caption: string; hashtags: string; hook: string; scriptText?: string; subject?: string } {
+  try {
+    const parsed = JSON.parse(content) as Partial<{ caption: string; hashtags: string; hook: string; scriptText: string; subject: string }>;
+    if (!parsed.caption?.trim()) throw new Error("caption missing");
+    return {
+      caption: parsed.caption,
+      hashtags: parsed.hashtags ?? "",
+      hook: parsed.hook ?? parsed.subject ?? parsed.caption.slice(0, 100),
+      scriptText: parsed.scriptText,
+      subject: parsed.subject,
+    };
+  } catch {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" });
+  }
+}
+
 export const postsRouter = router({
   list: protectedProcedure
     .input(z.object({
@@ -244,6 +260,7 @@ export const postsRouter = router({
       const post = await getContentPostById(input.id);
       if (!post) throw new TRPCError({ code: "NOT_FOUND" });
       if (!post.clientId) throw new TRPCError({ code: "BAD_REQUEST", message: "Post has no client assigned" });
+      await assertClientAccess(ctx, post.clientId);
       const promptCtx = await loadPromptContext(post.clientId, { campaignId: post.campaignId });
 
       const platform = (input.targetPlatform ?? post.platform) as Platform;
@@ -268,12 +285,7 @@ export const postsRouter = router({
 
       const content = response.choices[0]?.message?.content;
       if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
-      let parsed: { caption: string; hashtags: string; hook: string; scriptText?: string };
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to parse AI response" });
-      }
+      const parsed = parseGeneratedPostJson(content);
 
       const created = await createContentPost({
         clientId: post.clientId,
@@ -291,6 +303,56 @@ export const postsRouter = router({
         contentType: platform === "youtube" ? "video" : "text",
       });
       return created;
+    }),
+
+  regenerateCaption: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      instructions: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const post = await getContentPostById(input.id);
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!post.clientId) throw new TRPCError({ code: "BAD_REQUEST", message: "Post has no client assigned" });
+      await assertClientAccess(ctx, post.clientId);
+
+      const promptCtx = await loadPromptContext(post.clientId, { campaignId: post.campaignId });
+      const platform = post.platform as Platform;
+      const { system, user } = buildPostPrompt(promptCtx, {
+        platform,
+        contentPillar: (post.contentPillar ?? undefined) as any,
+        extraInstructions: [
+          "Regenerate the copy for this existing post in place.",
+          "Keep the same core idea, legal disclaimers, audience, platform, and CTA intent.",
+          "Return a materially improved title/hook, caption, and hashtags.",
+          "Do not mention that this is regenerated.",
+          "Existing title/hook:",
+          `"""${post.title ?? ""}"""`,
+          "Existing caption:",
+          `"""${post.caption ?? ""}"""`,
+          "Existing hashtags:",
+          `"""${post.hashtags ?? ""}"""`,
+          input.instructions ?? "",
+        ].filter(Boolean).join("\n"),
+      });
+
+      const response = await trackedInvokeLLM(
+        { messages: [{ role: "system", content: system }, { role: "user", content: user }] },
+        { clientId: post.clientId, userId: ctx.user.id, taskType: "regenerate_caption", summary: `regenerate caption for post ${post.id}` },
+      );
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "AI generation failed" });
+      const parsed = parseGeneratedPostJson(content);
+
+      return updateContentPost(input.id, {
+        title: (parsed.subject ?? parsed.hook)?.substring(0, 100),
+        caption: parsed.caption,
+        hashtags: parsed.hashtags,
+        scriptText: parsed.scriptText,
+        generationPrompt: user,
+        aiGenerated: true,
+      });
     }),
 
   submitForApproval: protectedProcedure

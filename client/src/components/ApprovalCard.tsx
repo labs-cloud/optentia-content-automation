@@ -180,7 +180,7 @@ export function ApprovalCard({ post, actions, busy }: { post: ApprovalPost; acti
             <DropdownMenuContent align="end" className="w-52">
               {actions.onRegenerate && (
                 <DropdownMenuItem onClick={() => actions.onRegenerate!(post)} className="cursor-pointer">
-                  <RefreshCcw className="h-4 w-4 mr-2" /> Regenerate
+                  <RefreshCcw className="h-4 w-4 mr-2" /> Regenerate caption
                 </DropdownMenuItem>
               )}
               {actions.onVariation && (
