@@ -20,7 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
-import { CheckSquare, ChevronLeft, ChevronRight, Loader2, Users } from "lucide-react";
+import { CheckCircle2, CheckSquare, ChevronLeft, ChevronRight, ExternalLink, Loader2, Send, Users } from "lucide-react";
 
 const STATUS_TABS = [
   { value: "pending_approval", label: "Pending Review" },
@@ -41,6 +41,12 @@ const REWORK_STRATEGIES = [
   { value: "contrarian", label: "Contrarian take" },
 ] as const;
 
+type PublishResult = {
+  post: ApprovalPost;
+  externalPostId?: string;
+  externalPostUrl?: string;
+};
+
 export default function ContentQueue() {
   const [, setLocation] = useLocation();
   const { activeClient } = useActiveClient();
@@ -52,6 +58,8 @@ export default function ContentQueue() {
   const [editPost, setEditPost] = useState<ApprovalPost | null>(null);
   const [rejectPost, setRejectPost] = useState<ApprovalPost | null>(null);
   const [schedulePost, setSchedulePost] = useState<ApprovalPost | null>(null);
+  const [publishConfirmPost, setPublishConfirmPost] = useState<ApprovalPost | null>(null);
+  const [publishResult, setPublishResult] = useState<PublishResult | null>(null);
   const [variationPost, setVariationPost] = useState<ApprovalPost | null>(null);
   const [reworkPost, setReworkPost] = useState<ApprovalPost | null>(null);
   const [previewPost, setPreviewPost] = useState<ApprovalPost | null>(null);
@@ -98,9 +106,11 @@ export default function ContentQueue() {
     activePreviewUrl && (previewPost?.contentType === "reel" || previewPost?.contentType === "video" || /\.(mp4|mov|webm)(\?|$)/i.test(activePreviewUrl)),
   );
 
-  const invalidate = () => {
-    utils.posts.invalidate();
-    utils.analytics.invalidate();
+  const invalidate = async () => {
+    await Promise.all([
+      utils.posts.invalidate(),
+      utils.analytics.invalidate(),
+    ]);
   };
 
   const approveMutation = trpc.posts.approve.useMutation({
@@ -148,13 +158,24 @@ export default function ContentQueue() {
   });
 
   const publishNowMutation = trpc.posts.publishNow.useMutation({
-    onSuccess: () => {
-      toast.success("Post published successfully!");
+    onMutate: () => {
+      toast.loading("Publishing to the live account...", { id: "publish-now" });
+    },
+    onSuccess: async (result) => {
+      toast.success("Post published", { id: "publish-now" });
+      if (publishConfirmPost) {
+        setPublishResult({
+          post: publishConfirmPost,
+          externalPostId: result.externalPostId,
+          externalPostUrl: result.externalPostUrl,
+        });
+      }
+      setPublishConfirmPost(null);
       setPublishingId(null);
-      invalidate();
+      await invalidate();
     },
     onError: (e) => {
-      toast.error(`Publish failed: ${e.message}`);
+      toast.error(`Publish failed: ${e.message}`, { id: "publish-now" });
       setPublishingId(null);
     },
   });
@@ -332,7 +353,7 @@ export default function ContentQueue() {
                     setSchedulePost(p);
                     setScheduleDate("");
                   },
-                  onPublish: handlePublishNow,
+                  onPublish: (p) => setPublishConfirmPost(p),
                   onRegenerate: openRework,
                   onVariation: openVariation,
                   onMarkWinner: (p) => markWinnerMutation.mutate({ id: p.id, isWinner: !p.isWinner }),
@@ -344,6 +365,91 @@ export default function ContentQueue() {
           ))}
         </StaggerList>
       )}
+
+      {/* Publish Confirmation Dialog */}
+      <Dialog
+        open={!!publishConfirmPost}
+        onOpenChange={(open) => {
+          if (!open && !publishNowMutation.isPending) setPublishConfirmPost(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Publish this post?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+              <div className="text-xs text-muted-foreground">Live destination</div>
+              <div className="mt-1 font-medium">
+                {publishConfirmPost
+                  ? `${PLATFORM_CONFIG[publishConfirmPost.platform as Platform]?.label ?? publishConfirmPost.platform}${activeClient?.name ? ` · ${activeClient.name}` : ""}`
+                  : "Selected platform"}
+              </div>
+            </div>
+            {publishConfirmPost?.title && (
+              <p className="text-sm font-medium">{publishConfirmPost.title}</p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              This sends the approved post to the connected social account now. The queue will move it to Published after the platform confirms it.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPublishConfirmPost(null)}
+              disabled={publishNowMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => publishConfirmPost && handlePublishNow(publishConfirmPost)}
+              disabled={publishNowMutation.isPending}
+            >
+              {publishNowMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+              Publish Now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Publish Result Dialog */}
+      <Dialog open={!!publishResult} onOpenChange={(open) => !open && setPublishResult(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary" />
+              Published
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              The post is live and has been moved to the Published tab.
+            </p>
+            {publishResult?.externalPostId && (
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                <div className="text-xs text-muted-foreground">Platform post ID</div>
+                <div className="mt-1 break-all font-mono text-xs">{publishResult.externalPostId}</div>
+              </div>
+            )}
+            {!publishResult?.externalPostUrl && (
+              <p className="text-xs text-muted-foreground">
+                The platform confirmed the publish but did not return a public permalink.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActiveTab("published")}>
+              View Published
+            </Button>
+            {publishResult?.externalPostUrl ? (
+              <Button onClick={() => window.open(publishResult.externalPostUrl, "_blank", "noopener,noreferrer")}>
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open Published Post
+              </Button>
+            ) : null}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Media Preview Dialog */}
       <Dialog open={!!previewPost} onOpenChange={(open) => !open && setPreviewPost(null)}>

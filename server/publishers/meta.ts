@@ -13,10 +13,21 @@
 export interface MetaPublishResult {
   success: boolean;
   externalPostId?: string;
+  externalPostUrl?: string;
   error?: string;
 }
 
 // ─── Instagram ────────────────────────────────────────────────────────────────
+
+async function getInstagramPermalink(baseUrl: string, mediaId: string, accessToken: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(`${baseUrl}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(accessToken)}`);
+    const data = (await res.json()) as { permalink?: string; error?: { message: string } };
+    return res.ok ? data.permalink : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export async function publishToInstagram(params: {
   accessToken: string;
@@ -96,7 +107,11 @@ export async function publishToInstagram(params: {
         };
       }
 
-      return { success: true, externalPostId: publishData.id };
+      return {
+        success: true,
+        externalPostId: publishData.id,
+        externalPostUrl: await getInstagramPermalink(baseUrl, publishData.id, accessToken),
+      };
       } catch (err) {
     return { success: false, error: String(err) };
   }
@@ -179,7 +194,11 @@ export async function publishCarouselToInstagram(params: {
     if (!publishRes || !publishRes.ok || !publishData.id) {
       return { success: false, error: publishData.error?.message ?? `Carousel publish failed (${publishRes?.status ?? "no response"})` };
     }
-    return { success: true, externalPostId: publishData.id };
+    return {
+      success: true,
+      externalPostId: publishData.id,
+      externalPostUrl: await getInstagramPermalink(baseUrl, publishData.id, accessToken),
+    };
   } catch (err) {
     return { success: false, error: String(err) };
   }

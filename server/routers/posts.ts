@@ -529,7 +529,7 @@ export const postsRouter = router({
 
       const caption = post.caption ?? "";
       const hashtags = post.hashtags ?? "";
-      let result: { success: boolean; externalPostId?: string; error?: string };
+      let result: { success: boolean; externalPostId?: string; externalPostUrl?: string; error?: string };
 
       switch (post.platform) {
         case "instagram": {
@@ -610,7 +610,7 @@ export const postsRouter = router({
         content: `Your ${post.platform} post "${post.title || caption.substring(0, 60)}..." was published successfully.`,
       });
 
-      return { success: true, externalPostId: result.externalPostId };
+      return { success: true, externalPostId: result.externalPostId, externalPostUrl: result.externalPostUrl };
     }),
 
   /** Upload a user-supplied image (base64) to R2 and return a /manus-storage URL. */

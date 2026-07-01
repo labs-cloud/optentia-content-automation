@@ -37,6 +37,7 @@ export type ApprovalPost = {
   createdAt: Date | string;
   rejectionReason: string | null;
   publishError: string | null;
+  externalPostId?: string | null;
   isWinner?: boolean | null;
   aiGenerated: boolean;
 };
@@ -157,7 +158,7 @@ export function ApprovalCard({ post, actions, busy }: { post: ApprovalPost; acti
           )}
           {(post.status === "approved" || post.status === "failed") && !manual && actions.onPublish && (
             <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => actions.onPublish!(post)}>
-              <Send /> Publish now
+              <Send /> {busy ? "Publishing..." : "Publish now"}
             </button>
           )}
           {post.status === "approved" && actions.onSchedule && (
