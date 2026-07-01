@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useActiveClient, useClientScope } from "@/contexts/ActiveClientContext";
 import { formatRelativeTime } from "@/lib/platformUtils";
 import { trpc } from "@/lib/trpc";
-import { Brain, Briefcase, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Brain, Briefcase, CheckCircle2, Loader2, Sparkles, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -30,6 +30,7 @@ export default function BrandBrain() {
 
   const [generateOpen, setGenerateOpen] = useState(false);
   const [sourceText, setSourceText] = useState("");
+  const [generatedProfile, setGeneratedProfile] = useState(false);
 
   const { data: profile, isLoading } = trpc.brandProfile.get.useQuery({ clientId }, { enabled });
   const { data: signals } = trpc.brandProfile.signals.useQuery({ clientId, limit: 20 }, { enabled });
@@ -46,7 +47,7 @@ export default function BrandBrain() {
     onSuccess: () => {
       toast.success("Brand Operating Profile generated");
       utils.brandProfile.get.invalidate({ clientId });
-      setGenerateOpen(false);
+      setGeneratedProfile(true);
       setSourceText("");
     },
     onError: (err) => toast.error(err.message),
@@ -145,34 +146,70 @@ export default function BrandBrain() {
         </PremiumCard>
       )}
 
-      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
+      <Dialog
+        open={generateOpen}
+        onOpenChange={(open) => {
+          if (generateMutation.isPending) return;
+          setGenerateOpen(open);
+          if (!open) setGeneratedProfile(false);
+        }}
+      >
         <DialogContent className="sm:max-w-lg rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="font-display">Generate Brand Operating Profile</DialogTitle>
-            <DialogDescription>
-              The AI uses {activeClient?.name}'s name, website, industry, offer and audience. Paste extra source
-              material below for a sharper profile (website copy, about page, example posts).
-            </DialogDescription>
-          </DialogHeader>
-          <Textarea
-            value={sourceText}
-            onChange={(e) => setSourceText(e.target.value)}
-            rows={7}
-            placeholder="Optional: paste website copy, an about page, or example content…"
-            className="rounded-xl"
-          />
-          <DialogFooter>
-            <Button variant="outline" className="rounded-xl" onClick={() => setGenerateOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              className="rounded-xl"
-              disabled={generateMutation.isPending}
-              onClick={() => generateMutation.mutate({ clientId, sourceText: sourceText || undefined })}
-            >
-              <Sparkles className="h-4 w-4 mr-1.5" /> Generate
-            </Button>
-          </DialogFooter>
+          {generatedProfile ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Brand profile updated
+                </DialogTitle>
+                <DialogDescription>
+                  Future captions, campaigns, and visual ideas will use this updated profile.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  className="rounded-xl"
+                  onClick={() => {
+                    setGenerateOpen(false);
+                    setGeneratedProfile(false);
+                  }}
+                >
+                  Review profile
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle className="font-display">Generate Brand Operating Profile</DialogTitle>
+                <DialogDescription>
+                  The AI uses {activeClient?.name}'s name, website, industry, offer and audience. Paste extra source
+                  material below for a sharper profile (website copy, about page, example posts).
+                </DialogDescription>
+              </DialogHeader>
+              <Textarea
+                value={sourceText}
+                onChange={(e) => setSourceText(e.target.value)}
+                rows={7}
+                placeholder="Optional: paste website copy, an about page, or example content…"
+                className="rounded-xl"
+                disabled={generateMutation.isPending}
+              />
+              <DialogFooter>
+                <Button variant="outline" className="rounded-xl" onClick={() => setGenerateOpen(false)} disabled={generateMutation.isPending}>
+                  Cancel
+                </Button>
+                <Button
+                  className="rounded-xl"
+                  disabled={generateMutation.isPending}
+                  onClick={() => generateMutation.mutate({ clientId, sourceText: sourceText || undefined })}
+                >
+                  {generateMutation.isPending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}
+                  Generate
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

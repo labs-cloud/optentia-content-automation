@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useActiveClient, type ClientSummary } from "@/contexts/ActiveClientContext";
 import { trpc } from "@/lib/trpc";
-import { Archive, Briefcase, Check, Globe, Pencil, Plus } from "lucide-react";
+import { Archive, Briefcase, Check, Globe, Loader2, Pencil, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocation, useSearch } from "wouter";
@@ -49,6 +49,7 @@ export default function Clients() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ClientSummary | null>(null);
+  const [archiveClient, setArchiveClient] = useState<ClientSummary | null>(null);
   const [form, setForm] = useState<ClientForm>(EMPTY_FORM);
 
   // Support /clients?new=1 deep link from the switcher / FAB.
@@ -82,6 +83,7 @@ export default function Clients() {
   const archiveMutation = trpc.clients.archive.useMutation({
     onSuccess: () => {
       toast.success("Client archived");
+      setArchiveClient(null);
       utils.clients.list.invalidate();
     },
     onError: (err) => toast.error(err.message),
@@ -192,11 +194,8 @@ export default function Clients() {
                       size="sm"
                       variant="ghost"
                       className="rounded-lg text-muted-foreground"
-                      onClick={() => {
-                        if (confirm(`Archive ${client.name}? Its content is kept but the workspace is hidden.`)) {
-                          archiveMutation.mutate({ clientId: client.id });
-                        }
-                      }}
+                      onClick={() => setArchiveClient(client)}
+                      disabled={archiveMutation.isPending}
                     >
                       <Archive className="h-3.5 w-3.5 mr-1" /> Archive
                     </Button>
@@ -207,6 +206,31 @@ export default function Clients() {
           })}
         </StaggerList>
       )}
+
+      <Dialog open={!!archiveClient} onOpenChange={(open) => !open && !archiveMutation.isPending && setArchiveClient(null)}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display">Archive client?</DialogTitle>
+            <DialogDescription>
+              {archiveClient?.name} will be hidden from the active workspace list. Its content and history are kept.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-xl" onClick={() => setArchiveClient(null)} disabled={archiveMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="rounded-xl"
+              onClick={() => archiveClient && archiveMutation.mutate({ clientId: archiveClient.id })}
+              disabled={archiveMutation.isPending}
+            >
+              {archiveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Archive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg rounded-2xl max-h-[90vh] overflow-y-auto">
