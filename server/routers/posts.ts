@@ -27,6 +27,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 
 const PLATFORM_ENUM = z.enum(PLATFORMS);
 const PILLAR_ENUM = z.enum(CONTENT_PILLARS);
+const REWORK_STRATEGY_ENUM = z.enum(["fresh_angle", "photo_story", "practical_education", "stronger_cta", "contrarian"]);
 
 type PlatformKey = z.infer<typeof PLATFORM_ENUM>;
 
@@ -308,6 +309,7 @@ export const postsRouter = router({
   regenerateCaption: protectedProcedure
     .input(z.object({
       id: z.number(),
+      strategy: REWORK_STRATEGY_ENUM.default("fresh_angle"),
       instructions: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -318,14 +320,28 @@ export const postsRouter = router({
 
       const promptCtx = await loadPromptContext(post.clientId, { campaignId: post.campaignId });
       const platform = post.platform as Platform;
+      const strategyInstruction: Record<z.infer<typeof REWORK_STRATEGY_ENUM>, string> = {
+        fresh_angle: "Find a new strategic angle for the same asset. The result should feel like a new post idea, not a sentence-level rewrite.",
+        photo_story: "Use the attached image as the anchor. Infer a credible story, point of view, or professional context from the visual and write around that image.",
+        practical_education: "Turn this into useful practical education. Make the post teach one clear thing the audience can act on.",
+        stronger_cta: "Keep the core idea but make the path to action stronger, clearer, and more conversion-oriented without sounding pushy.",
+        contrarian: "Create a sharper contrarian take. Make the opening bolder while staying accurate, professional, and compliant.",
+      };
+      const visualUrl =
+        post.imageUrl && (post.contentType === "image" || post.contentType === "carousel")
+          ? post.imageUrl
+          : null;
       const { system, user } = buildPostPrompt(promptCtx, {
         platform,
         contentPillar: (post.contentPillar ?? undefined) as any,
         extraInstructions: [
-          "Regenerate the copy for this existing post in place.",
+          "Rework this existing post in place.",
           "Keep the same core idea, legal disclaimers, audience, platform, and CTA intent.",
-          "Return a materially improved title/hook, caption, and hashtags.",
-          "Do not mention that this is regenerated.",
+          "You may change the angle, structure, hook, and messaging path.",
+          "Return a complete new title/hook, caption, and hashtags.",
+          "Do not mention that this is regenerated or reworked.",
+          strategyInstruction[input.strategy],
+          visualUrl ? "Use the attached image as creative context. The copy should feel intentionally paired with the image." : null,
           "Existing title/hook:",
           `"""${post.title ?? ""}"""`,
           "Existing caption:",
@@ -337,8 +353,18 @@ export const postsRouter = router({
       });
 
       const response = await trackedInvokeLLM(
-        { messages: [{ role: "system", content: system }, { role: "user", content: user }] },
-        { clientId: post.clientId, userId: ctx.user.id, taskType: "regenerate_caption", summary: `regenerate caption for post ${post.id}` },
+        {
+          messages: [
+            { role: "system", content: system },
+            {
+              role: "user",
+              content: visualUrl
+                ? [{ type: "text", text: user }, { type: "image_url", image_url: { url: visualUrl } }]
+                : user,
+            },
+          ],
+        },
+        { clientId: post.clientId, userId: ctx.user.id, taskType: "rework_post", summary: `rework post ${post.id} / ${input.strategy}` },
       );
 
       const content = response.choices[0]?.message?.content;

@@ -32,6 +32,14 @@ const STATUS_TABS = [
   { value: "failed", label: "Failed" },
 ];
 
+const REWORK_STRATEGIES = [
+  { value: "fresh_angle", label: "New angle" },
+  { value: "photo_story", label: "Story from photo" },
+  { value: "practical_education", label: "Practical education" },
+  { value: "stronger_cta", label: "Stronger CTA" },
+  { value: "contrarian", label: "Contrarian take" },
+] as const;
+
 export default function ContentQueue() {
   const [, setLocation] = useLocation();
   const { activeClient } = useActiveClient();
@@ -44,9 +52,12 @@ export default function ContentQueue() {
   const [rejectPost, setRejectPost] = useState<ApprovalPost | null>(null);
   const [schedulePost, setSchedulePost] = useState<ApprovalPost | null>(null);
   const [variationPost, setVariationPost] = useState<ApprovalPost | null>(null);
+  const [reworkPost, setReworkPost] = useState<ApprovalPost | null>(null);
   const [previewPost, setPreviewPost] = useState<ApprovalPost | null>(null);
   const [previewIndex, setPreviewIndex] = useState(0);
   const [variationPlatform, setVariationPlatform] = useState<Platform>("instagram");
+  const [reworkStrategy, setReworkStrategy] = useState<(typeof REWORK_STRATEGIES)[number]["value"]>("fresh_angle");
+  const [reworkInstructions, setReworkInstructions] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
   const [editCaption, setEditCaption] = useState("");
@@ -165,7 +176,9 @@ export default function ContentQueue() {
 
   const regenerateCaptionMutation = trpc.posts.regenerateCaption.useMutation({
     onSuccess: () => {
-      toast.success("Caption regenerated");
+      toast.success("Post reworked");
+      setReworkPost(null);
+      setReworkInstructions("");
       setRegeneratingId(null);
       invalidate();
     },
@@ -187,6 +200,12 @@ export default function ContentQueue() {
     setVariationPlatform((post.platform === "instagram" ? "linkedin_personal" : "instagram") as Platform);
   };
 
+  const openRework = (post: ApprovalPost) => {
+    setReworkPost(post);
+    setReworkStrategy(post.imageUrl || post.mediaUrl ? "photo_story" : "fresh_angle");
+    setReworkInstructions("");
+  };
+
   const openPreview = (post: ApprovalPost) => {
     setPreviewPost(post);
     setPreviewIndex(0);
@@ -197,9 +216,13 @@ export default function ContentQueue() {
     publishNowMutation.mutate({ id: post.id });
   };
 
-  const handleRegenerateCaption = (post: ApprovalPost) => {
+  const handleReworkPost = (post: ApprovalPost) => {
     setRegeneratingId(post.id);
-    regenerateCaptionMutation.mutate({ id: post.id });
+    regenerateCaptionMutation.mutate({
+      id: post.id,
+      strategy: reworkStrategy,
+      instructions: reworkInstructions.trim() || undefined,
+    });
   };
 
   const handleDelete = (post: ApprovalPost) => {
@@ -305,7 +328,7 @@ export default function ContentQueue() {
                     setScheduleDate("");
                   },
                   onPublish: handlePublishNow,
-                  onRegenerate: handleRegenerateCaption,
+                  onRegenerate: openRework,
                   onVariation: openVariation,
                   onMarkWinner: (p) => markWinnerMutation.mutate({ id: p.id, isWinner: !p.isWinner }),
                   onDelete: handleDelete,
@@ -511,6 +534,57 @@ export default function ContentQueue() {
               disabled={scheduleMutation.isPending || !scheduleDate}
             >
               Schedule Post
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Variation Dialog */}
+      <Dialog open={!!reworkPost} onOpenChange={(o) => !o && !regenerateCaptionMutation.isPending && setReworkPost(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Rework post</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Direction</label>
+              <Select value={reworkStrategy} onValueChange={(v) => setReworkStrategy(v as typeof reworkStrategy)}>
+                <SelectTrigger className="w-full rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REWORK_STRATEGIES.map((strategy) => (
+                    <SelectItem key={strategy.value} value={strategy.value}>
+                      {strategy.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1.5 block">Optional instructions</label>
+              <Textarea
+                value={reworkInstructions}
+                onChange={(e) => setReworkInstructions(e.target.value)}
+                rows={4}
+                placeholder="Example: make it more personal, lean into the photo, focus on trust, avoid sounding salesy..."
+                className="bg-muted/30 border-border/50 resize-none"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This updates the current post copy and keeps the media, status, platform, and approval flow unchanged.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReworkPost(null)} disabled={regenerateCaptionMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => reworkPost && handleReworkPost(reworkPost)}
+              disabled={regenerateCaptionMutation.isPending}
+            >
+              {regenerateCaptionMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Rework Post
             </Button>
           </DialogFooter>
         </DialogContent>

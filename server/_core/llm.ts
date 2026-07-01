@@ -116,6 +116,42 @@ function stripMarkdownFences(text: string): string {
   return text.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
 }
 
+function mediaTypeFromUrl(url: string, fallback = "image/jpeg"): string {
+  const cleanUrl = url.split("?")[0]?.toLowerCase() ?? "";
+  if (cleanUrl.endsWith(".png")) return "image/png";
+  if (cleanUrl.endsWith(".webp")) return "image/webp";
+  if (cleanUrl.endsWith(".gif")) return "image/gif";
+  if (cleanUrl.endsWith(".jpg") || cleanUrl.endsWith(".jpeg")) return "image/jpeg";
+  return fallback;
+}
+
+async function imageUrlToAnthropicBlock(part: ImageContent) {
+  const res = await fetch(part.image_url.url);
+  if (!res.ok) throw new Error(`Failed to fetch image for LLM (${res.status})`);
+  const mediaType = res.headers.get("content-type")?.split(";")[0] ?? mediaTypeFromUrl(part.image_url.url);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  return {
+    type: "image" as const,
+    source: {
+      type: "base64" as const,
+      media_type: mediaType,
+      data: bytes.toString("base64"),
+    },
+  };
+}
+
+async function toAnthropicContent(content: MessageContent | MessageContent[]): Promise<string | any[]> {
+  if (typeof content === "string") return content;
+  const parts = Array.isArray(content) ? content : [content];
+  const converted = await Promise.all(parts.map(async (part) => {
+    if (typeof part === "string") return { type: "text" as const, text: part };
+    if (part.type === "text") return { type: "text" as const, text: part.text };
+    if (part.type === "image_url") return imageUrlToAnthropicBlock(part);
+    return { type: "text" as const, text: part.file_url.url };
+  }));
+  return converted;
+}
+
 const anthropic = new Anthropic({ apiKey: ENV.anthropicApiKey });
 
 export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
@@ -124,12 +160,14 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   const systemMessage = messages.find(m => m.role === "system");
   const systemContent = systemMessage ? extractTextContent(systemMessage.content) : undefined;
 
-  const userMessages = messages
-    .filter(m => m.role !== "system")
-    .map(m => ({
-      role: m.role as "user" | "assistant",
-      content: extractTextContent(m.content),
-    }));
+  const userMessages = await Promise.all(
+    messages
+      .filter(m => m.role !== "system")
+      .map(async m => ({
+        role: (m.role === "assistant" ? "assistant" : "user") as "user" | "assistant",
+        content: await toAnthropicContent(m.content),
+      })),
+  );
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
